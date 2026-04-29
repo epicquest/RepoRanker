@@ -47,6 +47,14 @@ def clone_repository(repo_url: str) -> str:
     return tmpdir
 
 
+def _has_python_files(path: str) -> bool:
+    """Return True if *path* contains at least one .py file."""
+    for _dirpath, _dirs, filenames in os.walk(path):
+        if any(f.endswith(".py") for f in filenames):
+            return True
+    return False
+
+
 # ---------------------------------------------------------------------------
 # Analysis tools
 # ---------------------------------------------------------------------------
@@ -735,6 +743,11 @@ def analyze_repository(repo_url: str) -> "RepositoryAnalysis":
     """
     tmpdir = clone_repository(repo_url)  # may raise ValueError / RuntimeError
     try:
+        if not _has_python_files(tmpdir):
+            raise ValueError(
+                "This repository does not contain any Python files. "
+                "RepoRanker only supports Python projects."
+            )
         flake8_result = run_flake8(tmpdir)
         bandit_result = run_bandit(tmpdir)
         radon_result = run_radon(tmpdir)
