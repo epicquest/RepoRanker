@@ -137,6 +137,49 @@
       font-size: 0.875rem;
     }
     .back-link { display: inline-block; margin-top: 2rem; font-size: 0.9rem; }
+
+    /* Overall hero */
+    .overall-hero {
+      background: #161b22;
+      border: 1px solid #30363d;
+      border-radius: 12px;
+      padding: 1.75rem 2rem;
+      margin-bottom: 2rem;
+      display: flex;
+      align-items: center;
+      gap: 2rem;
+    }
+    .overall-hero .hero-label {
+      font-size: 0.85rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      color: #8b949e;
+      margin-bottom: 0.35rem;
+    }
+    .overall-hero .hero-value {
+      font-size: 4.5rem;
+      font-weight: 700;
+      line-height: 1;
+    }
+    .overall-hero .hero-bar-wrap { flex: 1; }
+    .overall-hero .hero-bar-bg {
+      background: #21262d;
+      border-radius: 9999px;
+      height: 12px;
+      overflow: hidden;
+      margin-top: 0.5rem;
+    }
+    .overall-hero .hero-bar-fill {
+      height: 100%;
+      border-radius: 9999px;
+      transition: width 0.5s ease;
+    }
+    .overall-hero .hero-desc {
+      font-size: 0.85rem;
+      color: #8b949e;
+      margin-top: 0.4rem;
+    }
   </style>
 </head>
 <body>
@@ -149,6 +192,22 @@
       &nbsp;&bull;&nbsp; analyzed {{ analysis.created_at|date:"N j, Y \a\t g:i A" }}
     </p>
   </header>
+
+  <!-- ─── Overall hero ──────────────────────────────────────────────────── -->
+  {% with s=analysis.overall_score %}
+  <div class="overall-hero">
+    <div>
+      <div class="hero-label">Overall Score</div>
+      <div class="hero-value {% if s >= 75 %}score-high{% elif s >= 40 %}score-mid{% else %}score-low{% endif %}">{{ s }}</div>
+    </div>
+    <div class="hero-bar-wrap">
+      <div class="hero-bar-bg">
+        <div class="hero-bar-fill {% if s >= 75 %}fill-high{% elif s >= 40 %}fill-mid{% else %}fill-low{% endif %}" style="width: {{ s }}%"></div>
+      </div>
+      <div class="hero-desc">Weighted blend of all 7 categories &mdash; style 20%, security 20%, architecture 15%, type safety 15%, coverage 15%, dead code 10%, tech debt 5%.</div>
+    </div>
+  </div>
+  {% endwith %}
 
   <!-- ─── Score cards ──────────────────────────────────────────────────── -->
   <div class="scores">
@@ -185,6 +244,36 @@
     {% with s=analysis.type_score %}
     <div class="score-card">
       <h2>Type Safety</h2>
+      <div class="score-value {% if s >= 75 %}score-high{% elif s >= 40 %}score-mid{% else %}score-low{% endif %}">{{ s }}</div>
+      <div class="score-bar-bg">
+        <div class="score-bar-fill {% if s >= 75 %}fill-high{% elif s >= 40 %}fill-mid{% else %}fill-low{% endif %}" style="width: {{ s }}%"></div>
+      </div>
+    </div>
+    {% endwith %}
+
+    {% with s=analysis.coverage_score %}
+    <div class="score-card">
+      <h2>Test Coverage</h2>
+      <div class="score-value {% if s >= 75 %}score-high{% elif s >= 40 %}score-mid{% else %}score-low{% endif %}">{{ s }}</div>
+      <div class="score-bar-bg">
+        <div class="score-bar-fill {% if s >= 75 %}fill-high{% elif s >= 40 %}fill-mid{% else %}fill-low{% endif %}" style="width: {{ s }}%"></div>
+      </div>
+    </div>
+    {% endwith %}
+
+    {% with s=analysis.dead_code_score %}
+    <div class="score-card">
+      <h2>Dead Code</h2>
+      <div class="score-value {% if s >= 75 %}score-high{% elif s >= 40 %}score-mid{% else %}score-low{% endif %}">{{ s }}</div>
+      <div class="score-bar-bg">
+        <div class="score-bar-fill {% if s >= 75 %}fill-high{% elif s >= 40 %}fill-mid{% else %}fill-low{% endif %}" style="width: {{ s }}%"></div>
+      </div>
+    </div>
+    {% endwith %}
+
+    {% with s=analysis.todo_score %}
+    <div class="score-card">
+      <h2>Tech Debt</h2>
       <div class="score-value {% if s >= 75 %}score-high{% elif s >= 40 %}score-mid{% else %}score-low{% endif %}">{{ s }}</div>
       <div class="score-bar-bg">
         <div class="score-bar-fill {% if s >= 75 %}fill-high{% elif s >= 40 %}fill-mid{% else %}fill-low{% endif %}" style="width: {{ s }}%"></div>
@@ -308,6 +397,119 @@
         {% else %}
           <p class="no-issues">&#10003; All functions rated A or B.</p>
         {% endif %}
+      {% endif %}
+    </div>
+  </details>
+  {% endwith %}
+
+  <!-- ─── Test Coverage ─────────────────────────────────────────────────── -->
+  {% with cat=analysis.report_details.coverage %}
+  <details class="section">
+    <summary>
+      Test Coverage
+      <span style="font-weight:400; color:#8b949e; font-size:0.85rem;">{{ cat.summary }}</span>
+    </summary>
+    <div class="section-body">
+      {% if cat.error %}
+        <div class="error-box">Tool error: {{ cat.error }}</div>
+      {% else %}
+        <p class="summary-text">
+          Total coverage: <strong>{% if cat.coverage_pct is not None %}{{ cat.coverage_pct }}%{% else %}N/A{% endif %}</strong>
+        </p>
+        {% if cat.files %}
+          <table class="issue-table">
+            <thead>
+              <tr><th>File</th><th>Coverage</th></tr>
+            </thead>
+            <tbody>
+              {% for file, pct in cat.files.items %}
+              <tr>
+                <td>{{ file }}</td>
+                <td>
+                  <span class="badge {% if pct >= 75 %}badge-low{% elif pct >= 40 %}badge-medium{% else %}badge-high{% endif %}">
+                    {{ pct }}%
+                  </span>
+                </td>
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        {% else %}
+          <p class="no-issues">No coverage data available (no tests found).</p>
+        {% endif %}
+      {% endif %}
+    </div>
+  </details>
+  {% endwith %}
+
+  <!-- ─── Dead Code ───────────────────────────────────────────────────────── -->
+  {% with cat=analysis.report_details.dead_code %}
+  <details class="section">
+    <summary>
+      Dead Code (Vulture)
+      <span style="font-weight:400; color:#8b949e; font-size:0.85rem;">{{ cat.summary }}</span>
+    </summary>
+    <div class="section-body">
+      {% if cat.error %}
+        <div class="error-box">Tool error: {{ cat.error }}</div>
+      {% elif cat.items %}
+        <table class="issue-table">
+          <thead>
+            <tr><th>File</th><th>Line</th><th>Kind</th><th>Name</th><th>Confidence</th></tr>
+          </thead>
+          <tbody>
+            {% for item in cat.items %}
+            <tr>
+              <td>{{ item.file }}</td>
+              <td>{{ item.line }}</td>
+              <td>{{ item.kind }}</td>
+              <td><code>{{ item.name }}</code></td>
+              <td>{{ item.confidence }}%</td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      {% else %}
+        <p class="no-issues">&#10003; No dead code found.</p>
+      {% endif %}
+    </div>
+  </details>
+  {% endwith %}
+
+  <!-- ─── TODO / FIXME ────────────────────────────────────────────────────── -->
+  {% with cat=analysis.report_details.todo %}
+  <details class="section">
+    <summary>
+      Tech Debt (TODO / FIXME)
+      <span style="font-weight:400; color:#8b949e; font-size:0.85rem;">{{ cat.summary }}</span>
+    </summary>
+    <div class="section-body">
+      {% if cat.error %}
+        <div class="error-box">Tool error: {{ cat.error }}</div>
+      {% elif cat.occurrences %}
+        <p class="summary-text">
+          TODO: {{ cat.counts.TODO }}&nbsp;&nbsp;
+          FIXME: {{ cat.counts.FIXME }}&nbsp;&nbsp;
+          HACK: {{ cat.counts.HACK }}&nbsp;&nbsp;
+          XXX: {{ cat.counts.XXX }}
+        </p>
+        <table class="issue-table">
+          <thead>
+            <tr><th>File</th><th>Line</th><th>Keyword</th><th>Text</th></tr>
+          </thead>
+          <tbody>
+            {% for occ in cat.occurrences %}
+            <tr>
+              <td>{{ occ.file }}</td>
+              <td>{{ occ.line }}</td>
+              <td><span class="badge badge-medium">{{ occ.keyword }}</span></td>
+              <td>{{ occ.text }}</td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      {% else %}
+        <p class="no-issues">&#10003; No TODO/FIXME comments found.</p>
       {% endif %}
     </div>
   </details>

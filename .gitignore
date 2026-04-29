@@ -3,3 +3,4 @@
 /analyzer/migrations/__pycache__/
 /server.log
 /server.pid
+/db.sqlite3

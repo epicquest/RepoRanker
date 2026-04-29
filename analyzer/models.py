@@ -7,6 +7,10 @@ class RepositoryAnalysis(models.Model):
     security_score = models.IntegerField(default=0)
     architecture_score = models.IntegerField(default=0)
     type_score = models.IntegerField(default=0)
+    coverage_score = models.IntegerField(default=0)
+    dead_code_score = models.IntegerField(default=0)
+    todo_score = models.IntegerField(default=0)
+    overall_score = models.IntegerField(default=0)
     report_details = models.JSONField(default=dict)
     created_at = models.DateTimeField(auto_now_add=True)
 

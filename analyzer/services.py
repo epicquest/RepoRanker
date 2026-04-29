@@ -5,6 +5,7 @@ Public API:
     analyze_repository(repo_url) -> RepositoryAnalysis
 """
 import json
+import os
 import re
 import shutil
 import subprocess
@@ -435,6 +436,162 @@ def run_pylint(path: str) -> dict:
     return {"issues": issues, "summary": summary, "error": None}
 
 
+def run_pytest_coverage(path: str) -> dict:
+    """
+    Run pytest with coverage inside *path* and return the total coverage %.
+
+    Return shape::
+
+        {
+            "coverage_pct": int,        # 0-100, or None if no tests found
+            "files": {"file": pct, ...},
+            "summary": str,
+            "error": str | None,
+        }
+    """
+    try:
+        result = subprocess.run(
+            [
+                "python", "-m", "pytest",
+                "--cov=.",
+                "--cov-report=term-missing",
+                "--no-header",
+                "-q",
+                "--tb=no",
+            ],
+            capture_output=True,
+            text=True,
+            timeout=180,
+            cwd=path,
+        )
+    except Exception as exc:  # noqa: BLE001
+        return {"coverage_pct": None, "files": {}, "summary": "pytest execution failed", "error": str(exc)}
+
+    # No tests collected
+    if "no tests ran" in result.stdout.lower() or "no tests ran" in result.stderr.lower():
+        return {
+            "coverage_pct": 0,
+            "files": {},
+            "summary": "No tests found. Coverage: 0%.",
+            "error": None,
+        }
+
+    # Parse per-file coverage and TOTAL line
+    files: dict = {}
+    coverage_pct: int = 0
+    _cov_line_re = re.compile(r'^(\S+\.py)\s+\d+\s+\d+\s+(\d+)%')
+    _total_re = re.compile(r'^TOTAL\s+\d+\s+\d+\s+(\d+)%')
+
+    for line in result.stdout.splitlines():
+        m_total = _total_re.match(line)
+        if m_total:
+            coverage_pct = int(m_total.group(1))
+            continue
+        m_file = _cov_line_re.match(line)
+        if m_file:
+            files[m_file.group(1)] = int(m_file.group(2))
+
+    summary = f"Test coverage: {coverage_pct}%."
+    return {"coverage_pct": coverage_pct, "files": files, "summary": summary, "error": None}
+
+
+def run_vulture(path: str) -> dict:
+    """
+    Run vulture on *path* to detect dead code.
+
+    Return shape::
+
+        {
+            "items": [{"file": str, "line": int, "kind": str,
+                       "name": str, "confidence": int}, ...],
+            "summary": str,
+            "error": str | None,
+        }
+    """
+    try:
+        result = subprocess.run(
+            ["vulture", path, "--min-confidence", "60"],
+            capture_output=True,
+            text=True,
+            timeout=120,
+        )
+    except Exception as exc:  # noqa: BLE001
+        return {"items": [], "summary": "vulture execution failed", "error": str(exc)}
+
+    # Line format: /abs/path/file.py:42: unused function 'foo' (60% confidence)
+    _vulture_re = re.compile(
+        r'^(.+?):(\d+): unused (\w+(?:\s+\w+)*) \'(.+?)\' \((\d+)% confidence\)$'
+    )
+    items = []
+    for line in result.stdout.splitlines():
+        m = _vulture_re.match(line)
+        if m:
+            items.append({
+                "file": m.group(1).replace(path, "").lstrip("/\\"),
+                "line": int(m.group(2)),
+                "kind": m.group(3),
+                "name": m.group(4),
+                "confidence": int(m.group(5)),
+            })
+
+    summary = f"{len(items)} unused code item(s) found by vulture."
+    return {"items": items, "summary": summary, "error": None}
+
+
+_TODO_RE = re.compile(r'\b(TODO|FIXME|HACK|XXX)\b.*', re.IGNORECASE)
+
+
+def run_todo_fixme(path: str) -> dict:
+    """
+    Walk *path* recursively and count TODO/FIXME/HACK/XXX comments in .py files.
+
+    Return shape::
+
+        {
+            "occurrences": [{"file": str, "line": int,
+                             "keyword": str, "text": str}, ...],
+            "counts": {"TODO": int, "FIXME": int, "HACK": int, "XXX": int},
+            "summary": str,
+            "error": str | None,
+        }
+    """
+    try:
+        occurrences = []
+        counts: dict = {"TODO": 0, "FIXME": 0, "HACK": 0, "XXX": 0}
+
+        for dirpath, _dirs, filenames in os.walk(path):
+            for filename in filenames:
+                if not filename.endswith(".py"):
+                    continue
+                filepath = os.path.join(dirpath, filename)
+                short_path = filepath.replace(path, "").lstrip("/\\")
+                try:
+                    with open(filepath, encoding="utf-8", errors="ignore") as fh:
+                        for lineno, raw_line in enumerate(fh, start=1):
+                            m = _TODO_RE.search(raw_line)
+                            if m:
+                                keyword = m.group(1).upper()
+                                counts[keyword] = counts.get(keyword, 0) + 1
+                                occurrences.append({
+                                    "file": short_path,
+                                    "line": lineno,
+                                    "keyword": keyword,
+                                    "text": raw_line.strip(),
+                                })
+                except OSError:
+                    continue
+
+        total = sum(counts.values())
+        summary = (
+            f"{total} technical debt comment(s): "
+            f"{counts['TODO']} TODO, {counts['FIXME']} FIXME, "
+            f"{counts['HACK']} HACK, {counts['XXX']} XXX."
+        )
+        return {"occurrences": occurrences, "counts": counts, "summary": summary, "error": None}
+    except Exception as exc:  # noqa: BLE001
+        return {"occurrences": [], "counts": {}, "summary": "todo scan failed", "error": str(exc)}
+
+
 def _complexity_to_grade(avg: float) -> str:
     if avg <= 5:
         return "A"
@@ -462,18 +619,20 @@ def calculate_scores(
     mypy_result: dict,
     ruff_result: dict,
     pylint_result: dict,
+    coverage_result: dict,
+    vulture_result: dict,
+    todo_result: dict,
 ) -> dict:
     """
-    Compute scores for each category and return a dict with keys
-    ``style``, ``security``, ``architecture``, ``type_safety`` — each an int in [0, 100].
+    Compute scores for each category and an overall weighted score.
 
-    Style is the average of four independent tool scores so that no single
-    tool can dominate.  Type-safety is driven solely by mypy.
+    Returns keys: style, security, architecture, type_safety,
+                  coverage, dead_code, todo, overall  — each int in [0, 100].
     """
     def _tool_style_score(issues_count: int, per_issue: int = 1) -> int:
         return max(0, 100 - issues_count * per_issue)
 
-    # --- Style: average of four tool scores ----------------------------------
+    # --- Style ---------------------------------------------------------------
     flake8_score = (
         _tool_style_score(len(flake8_result.get("issues", [])))
         if flake8_result.get("error") is None else 100
@@ -492,10 +651,9 @@ def calculate_scores(
         if pylint_result.get("error") is None else 0
     )
     pylint_score = max(0, 100 - pylint_total)
-
     style = (flake8_score + ruff_score + black_score + pylint_score) // 4
 
-    # --- Security: bandit (unchanged) ----------------------------------------
+    # --- Security ------------------------------------------------------------
     security = 100
     if bandit_result.get("error") is None:
         severity_deductions = {"LOW": 2, "MEDIUM": 5, "HIGH": 10}
@@ -503,7 +661,7 @@ def calculate_scores(
             security -= severity_deductions.get(issue.get("severity", ""), 0)
     security = max(0, min(100, security))
 
-    # --- Architecture: radon grade-based (unchanged) -------------------------
+    # --- Architecture --------------------------------------------------------
     architecture = 100
     if radon_result.get("error") is None:
         grade = radon_result.get("avg_grade", "A")
@@ -511,17 +669,53 @@ def calculate_scores(
         architecture -= grade_deductions.get(grade, 0)
     architecture = max(0, min(100, architecture))
 
-    # --- Type safety: mypy ---------------------------------------------------
+    # --- Type safety ---------------------------------------------------------
     type_safety = 100
     if mypy_result.get("error") is None:
         errors = sum(1 for i in mypy_result.get("issues", []) if i.get("severity") == "error")
         type_safety = max(0, 100 - errors * 5)
+
+    # --- Test coverage -------------------------------------------------------
+    coverage = 0
+    if coverage_result.get("error") is None:
+        pct = coverage_result.get("coverage_pct")
+        if pct is not None:
+            coverage = int(pct)
+            # Extra penalty for repos with < 60% coverage
+            if coverage < 60:
+                coverage = max(0, coverage - (60 - coverage) // 2)
+    coverage = max(0, min(100, coverage))
+
+    # --- Dead code -----------------------------------------------------------
+    dead_code = 100
+    if vulture_result.get("error") is None:
+        dead_code = max(0, 100 - len(vulture_result.get("items", [])) * 3)
+
+    # --- TODO/FIXME density --------------------------------------------------
+    todo_total = sum(todo_result.get("counts", {}).values())
+    todo_score = max(0, 100 - todo_total * 2)
+
+    # --- Overall (weighted) --------------------------------------------------
+    overall = int(
+        style       * 0.20 +
+        security    * 0.20 +
+        architecture* 0.15 +
+        type_safety * 0.15 +
+        coverage    * 0.15 +
+        dead_code   * 0.10 +
+        todo_score  * 0.05
+    )
+    overall = max(0, min(100, overall))
 
     return {
         "style": style,
         "security": security,
         "architecture": architecture,
         "type_safety": type_safety,
+        "coverage": coverage,
+        "dead_code": dead_code,
+        "todo": todo_score,
+        "overall": overall,
     }
 
 
@@ -548,10 +742,14 @@ def analyze_repository(repo_url: str) -> "RepositoryAnalysis":
         mypy_result = run_mypy(tmpdir)
         ruff_result = run_ruff(tmpdir)
         pylint_result = run_pylint(tmpdir)
+        coverage_result = run_pytest_coverage(tmpdir)
+        vulture_result = run_vulture(tmpdir)
+        todo_result = run_todo_fixme(tmpdir)
 
         scores = calculate_scores(
             flake8_result, bandit_result, radon_result,
             black_result, mypy_result, ruff_result, pylint_result,
+            coverage_result, vulture_result, todo_result,
         )
 
         report_details = {
@@ -593,6 +791,23 @@ def analyze_repository(repo_url: str) -> "RepositoryAnalysis":
                 "summary": pylint_result["summary"],
                 "error": pylint_result.get("error"),
             },
+            "coverage": {
+                "coverage_pct": coverage_result.get("coverage_pct"),
+                "files": coverage_result.get("files", {}),
+                "summary": coverage_result["summary"],
+                "error": coverage_result.get("error"),
+            },
+            "dead_code": {
+                "items": vulture_result["items"],
+                "summary": vulture_result["summary"],
+                "error": vulture_result.get("error"),
+            },
+            "todo": {
+                "occurrences": todo_result["occurrences"],
+                "counts": todo_result.get("counts", {}),
+                "summary": todo_result["summary"],
+                "error": todo_result.get("error"),
+            },
         }
 
         analysis = RepositoryAnalysis.objects.create(
@@ -601,6 +816,10 @@ def analyze_repository(repo_url: str) -> "RepositoryAnalysis":
             security_score=scores["security"],
             architecture_score=scores["architecture"],
             type_score=scores["type_safety"],
+            coverage_score=scores["coverage"],
+            dead_code_score=scores["dead_code"],
+            todo_score=scores["todo"],
+            overall_score=scores["overall"],
             report_details=report_details,
         )
         return analysis

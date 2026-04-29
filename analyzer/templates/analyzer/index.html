@@ -163,15 +163,18 @@
 
   <script>
     const steps = [
-      { label: "Cloning repository…",        pct: 10 },
-      { label: "Running flake8…",             pct: 22 },
-      { label: "Running ruff…",               pct: 34 },
-      { label: "Running black check…",        pct: 46 },
-      { label: "Running pylint…",             pct: 58 },
-      { label: "Running bandit (security)…",  pct: 68 },
-      { label: "Running radon (complexity)…", pct: 78 },
-      { label: "Running mypy (types)…",       pct: 88 },
-      { label: "Computing scores…",           pct: 96 },
+      { label: "Cloning repository…",        pct: 8  },
+      { label: "Running flake8…",             pct: 17 },
+      { label: "Running ruff…",               pct: 26 },
+      { label: "Running black check…",        pct: 34 },
+      { label: "Running pylint…",             pct: 42 },
+      { label: "Running bandit (security)…",  pct: 50 },
+      { label: "Running radon (complexity)…", pct: 58 },
+      { label: "Running mypy (types)…",       pct: 66 },
+      { label: "Running pytest (coverage)…",  pct: 76 },
+      { label: "Running vulture (dead code)…",pct: 84 },
+      { label: "Scanning for TODO/FIXME…",    pct: 91 },
+      { label: "Computing scores…",           pct: 97 },
     ];
 
     document.querySelector("form").addEventListener("submit", function () {
@@ -190,11 +193,11 @@
         if (i >= steps.length) return;
         const step = steps[i++];
         fill.style.width  = step.pct + "%";
-        fill.style.background = step.pct >= 88 ? "#58a6ff" : "#238636";
+        fill.style.background = step.pct >= 91 ? "#58a6ff" : "#238636";
         text.textContent  = step.label;
         pct.textContent   = step.pct + "%";
         // space steps unevenly — early ones faster, later ones slower
-        const delay = i <= 3 ? 800 : i <= 6 ? 1400 : 2200;
+        const delay = i <= 4 ? 800 : i <= 8 ? 1400 : 2500;
         setTimeout(advance, delay);
       }
       advance();
