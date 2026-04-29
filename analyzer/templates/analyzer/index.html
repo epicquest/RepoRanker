@@ -1,0 +1,204 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>RepoRanker</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      background: #0d1117;
+      color: #c9d1d9;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      padding: 2rem;
+    }
+    .card {
+      background: #161b22;
+      border: 1px solid #30363d;
+      border-radius: 12px;
+      padding: 2.5rem 3rem;
+      width: 100%;
+      max-width: 560px;
+    }
+    h1 {
+      font-size: 2rem;
+      font-weight: 700;
+      color: #f0f6fc;
+      margin-bottom: 0.4rem;
+    }
+    .subtitle {
+      color: #8b949e;
+      margin-bottom: 2rem;
+      font-size: 0.95rem;
+    }
+    label {
+      display: block;
+      font-size: 0.875rem;
+      font-weight: 600;
+      color: #c9d1d9;
+      margin-bottom: 0.5rem;
+    }
+    input[type="url"] {
+      width: 100%;
+      padding: 0.65rem 1rem;
+      background: #0d1117;
+      border: 1px solid #30363d;
+      border-radius: 6px;
+      color: #c9d1d9;
+      font-size: 0.95rem;
+      outline: none;
+      transition: border-color 0.2s;
+    }
+    input[type="url"]:focus { border-color: #58a6ff; }
+    .error-list {
+      list-style: none;
+      margin-top: 0.5rem;
+    }
+    .error-list li {
+      color: #f85149;
+      font-size: 0.85rem;
+      padding: 0.25rem 0;
+    }
+    .non-field-errors {
+      background: #2d1b1b;
+      border: 1px solid #f8514950;
+      border-radius: 6px;
+      padding: 0.75rem 1rem;
+      margin-bottom: 1rem;
+      color: #f85149;
+      font-size: 0.875rem;
+    }
+    button[type="submit"] {
+      margin-top: 1.25rem;
+      width: 100%;
+      padding: 0.7rem;
+      background: #238636;
+      border: 1px solid #2ea043;
+      border-radius: 6px;
+      color: #fff;
+      font-size: 1rem;
+      font-weight: 600;
+      cursor: pointer;
+      transition: background 0.2s;
+    }
+    button[type="submit"]:hover:not(:disabled) { background: #2ea043; }
+    button[type="submit"]:disabled { background: #1a4227; border-color: #1a4227; color: #6e7681; cursor: not-allowed; }
+    .hint {
+      margin-top: 1.5rem;
+      font-size: 0.8rem;
+      color: #6e7681;
+      text-align: center;
+    }
+
+    /* Progress bar */
+    .progress-wrap {
+      display: none;
+      margin-top: 1.25rem;
+    }
+    .progress-wrap.visible { display: block; }
+    .progress-label {
+      font-size: 0.8rem;
+      color: #8b949e;
+      margin-bottom: 0.4rem;
+      display: flex;
+      justify-content: space-between;
+    }
+    .progress-bg {
+      background: #21262d;
+      border-radius: 9999px;
+      height: 8px;
+      overflow: hidden;
+    }
+    .progress-fill {
+      height: 100%;
+      width: 0%;
+      border-radius: 9999px;
+      background: #238636;
+      transition: width 0.4s ease;
+    }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <h1>&#128202; RepoRanker</h1>
+    <p class="subtitle">Analyze any public GitHub repository for code style, security, and architecture.</p>
+
+    {% if form.non_field_errors %}
+    <div class="non-field-errors">
+      {% for error in form.non_field_errors %}{{ error }}{% endfor %}
+    </div>
+    {% endif %}
+
+    <form method="post" novalidate>
+      {% csrf_token %}
+      <div>
+        <label for="{{ form.repo_url.id_for_label }}">GitHub Repository URL</label>
+        {{ form.repo_url }}
+        {% if form.repo_url.errors %}
+        <ul class="error-list">
+          {% for error in form.repo_url.errors %}<li>{{ error }}</li>{% endfor %}
+        </ul>
+        {% endif %}
+      </div>
+      <button type="submit" id="submit-btn">Analyze Repository</button>
+    </form>
+
+    <div class="progress-wrap" id="progress-wrap">
+      <div class="progress-label">
+        <span id="progress-text">Cloning repository…</span>
+        <span id="progress-pct">0%</span>
+      </div>
+      <div class="progress-bg">
+        <div class="progress-fill" id="progress-fill"></div>
+      </div>
+    </div>
+
+    <p class="hint">Analysis may take up to 60 seconds depending on repository size.</p>
+  </div>
+
+  <script>
+    const steps = [
+      { label: "Cloning repository…",        pct: 10 },
+      { label: "Running flake8…",             pct: 22 },
+      { label: "Running ruff…",               pct: 34 },
+      { label: "Running black check…",        pct: 46 },
+      { label: "Running pylint…",             pct: 58 },
+      { label: "Running bandit (security)…",  pct: 68 },
+      { label: "Running radon (complexity)…", pct: 78 },
+      { label: "Running mypy (types)…",       pct: 88 },
+      { label: "Computing scores…",           pct: 96 },
+    ];
+
+    document.querySelector("form").addEventListener("submit", function () {
+      const btn   = document.getElementById("submit-btn");
+      const wrap  = document.getElementById("progress-wrap");
+      const fill  = document.getElementById("progress-fill");
+      const text  = document.getElementById("progress-text");
+      const pct   = document.getElementById("progress-pct");
+
+      btn.disabled = true;
+      btn.textContent = "Analyzing…";
+      wrap.classList.add("visible");
+
+      let i = 0;
+      function advance() {
+        if (i >= steps.length) return;
+        const step = steps[i++];
+        fill.style.width  = step.pct + "%";
+        fill.style.background = step.pct >= 88 ? "#58a6ff" : "#238636";
+        text.textContent  = step.label;
+        pct.textContent   = step.pct + "%";
+        // space steps unevenly — early ones faster, later ones slower
+        const delay = i <= 3 ? 800 : i <= 6 ? 1400 : 2200;
+        setTimeout(advance, delay);
+      }
+      advance();
+    });
+  </script>
+</body>
+</html>

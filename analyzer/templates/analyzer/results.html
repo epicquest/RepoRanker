@@ -1,0 +1,465 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Results – RepoRanker</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      background: #0d1117;
+      color: #c9d1d9;
+      padding: 2rem;
+    }
+    a { color: #58a6ff; text-decoration: none; }
+    a:hover { text-decoration: underline; }
+    .container { max-width: 900px; margin: 0 auto; }
+    header { margin-bottom: 2rem; }
+    header h1 { font-size: 1.75rem; color: #f0f6fc; margin-bottom: 0.25rem; }
+    header p { color: #8b949e; font-size: 0.9rem; }
+
+    /* Score cards */
+    .scores {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+      gap: 1rem;
+      margin-bottom: 2.5rem;
+    }
+    .score-card {
+      background: #161b22;
+      border: 1px solid #30363d;
+      border-radius: 12px;
+      padding: 1.5rem 1.75rem;
+    }
+    .score-card h2 {
+      font-size: 0.85rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      color: #8b949e;
+      margin-bottom: 0.5rem;
+    }
+    .score-value {
+      font-size: 3rem;
+      font-weight: 700;
+      line-height: 1;
+      margin-bottom: 0.75rem;
+    }
+    .score-bar-bg {
+      background: #21262d;
+      border-radius: 9999px;
+      height: 8px;
+      overflow: hidden;
+    }
+    .score-bar-fill {
+      height: 100%;
+      border-radius: 9999px;
+      transition: width 0.4s ease;
+    }
+    /* colour thresholds */
+    .score-high   { color: #3fb950; }
+    .score-mid    { color: #d29922; }
+    .score-low    { color: #f85149; }
+    .fill-high    { background: #3fb950; }
+    .fill-mid     { background: #d29922; }
+    .fill-low     { background: #f85149; }
+
+    /* Details sections */
+    .section {
+      background: #161b22;
+      border: 1px solid #30363d;
+      border-radius: 12px;
+      margin-bottom: 1.25rem;
+      overflow: hidden;
+    }
+    .section summary {
+      padding: 1rem 1.5rem;
+      cursor: pointer;
+      user-select: none;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      font-weight: 600;
+      font-size: 1rem;
+      color: #f0f6fc;
+      list-style: none;
+    }
+    .section summary::-webkit-details-marker { display: none; }
+    .section summary::after { content: "›"; font-size: 1.25rem; transform: rotate(90deg); display: inline-block; transition: transform 0.2s; }
+    .section[open] summary::after { transform: rotate(270deg); }
+    .section-body { padding: 0 1.5rem 1.5rem; }
+    .summary-text {
+      font-size: 0.875rem;
+      color: #8b949e;
+      margin-bottom: 1rem;
+    }
+    .badge {
+      font-size: 0.75rem;
+      font-weight: 600;
+      padding: 0.2rem 0.6rem;
+      border-radius: 9999px;
+      margin-left: 0.75rem;
+    }
+    .badge-high     { background: #3d1a1a; color: #f85149; }
+    .badge-medium   { background: #2d1f00; color: #d29922; }
+    .badge-low      { background: #0a1f0a; color: #3fb950; }
+
+    /* Issue tables */
+    .issue-table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 0.8rem;
+    }
+    .issue-table th {
+      text-align: left;
+      padding: 0.4rem 0.75rem;
+      color: #8b949e;
+      border-bottom: 1px solid #21262d;
+      font-weight: 600;
+    }
+    .issue-table td {
+      padding: 0.45rem 0.75rem;
+      border-bottom: 1px solid #21262d;
+      vertical-align: top;
+      word-break: break-word;
+    }
+    .issue-table tr:last-child td { border-bottom: none; }
+    .issue-table tr:hover td { background: #1c2128; }
+
+    .no-issues { color: #3fb950; font-size: 0.875rem; padding: 0.5rem 0; }
+    .error-box {
+      background: #2d1b1b;
+      border: 1px solid #f8514950;
+      border-radius: 6px;
+      padding: 0.75rem 1rem;
+      color: #f85149;
+      font-size: 0.875rem;
+    }
+    .back-link { display: inline-block; margin-top: 2rem; font-size: 0.9rem; }
+  </style>
+</head>
+<body>
+<div class="container">
+
+  <header>
+    <h1>&#128202; RepoRanker Results</h1>
+    <p>
+      <a href="{{ analysis.repo_url }}" target="_blank" rel="noopener noreferrer">{{ analysis.repo_url }}</a>
+      &nbsp;&bull;&nbsp; analyzed {{ analysis.created_at|date:"N j, Y \a\t g:i A" }}
+    </p>
+  </header>
+
+  <!-- ─── Score cards ──────────────────────────────────────────────────── -->
+  <div class="scores">
+    {% with s=analysis.style_score %}
+    <div class="score-card">
+      <h2>Code Style</h2>
+      <div class="score-value {% if s >= 75 %}score-high{% elif s >= 40 %}score-mid{% else %}score-low{% endif %}">{{ s }}</div>
+      <div class="score-bar-bg">
+        <div class="score-bar-fill {% if s >= 75 %}fill-high{% elif s >= 40 %}fill-mid{% else %}fill-low{% endif %}" style="width: {{ s }}%"></div>
+      </div>
+    </div>
+    {% endwith %}
+
+    {% with s=analysis.security_score %}
+    <div class="score-card">
+      <h2>Security</h2>
+      <div class="score-value {% if s >= 75 %}score-high{% elif s >= 40 %}score-mid{% else %}score-low{% endif %}">{{ s }}</div>
+      <div class="score-bar-bg">
+        <div class="score-bar-fill {% if s >= 75 %}fill-high{% elif s >= 40 %}fill-mid{% else %}fill-low{% endif %}" style="width: {{ s }}%"></div>
+      </div>
+    </div>
+    {% endwith %}
+
+    {% with s=analysis.architecture_score %}
+    <div class="score-card">
+      <h2>Architecture</h2>
+      <div class="score-value {% if s >= 75 %}score-high{% elif s >= 40 %}score-mid{% else %}score-low{% endif %}">{{ s }}</div>
+      <div class="score-bar-bg">
+        <div class="score-bar-fill {% if s >= 75 %}fill-high{% elif s >= 40 %}fill-mid{% else %}fill-low{% endif %}" style="width: {{ s }}%"></div>
+      </div>
+    </div>
+    {% endwith %}
+
+    {% with s=analysis.type_score %}
+    <div class="score-card">
+      <h2>Type Safety</h2>
+      <div class="score-value {% if s >= 75 %}score-high{% elif s >= 40 %}score-mid{% else %}score-low{% endif %}">{{ s }}</div>
+      <div class="score-bar-bg">
+        <div class="score-bar-fill {% if s >= 75 %}fill-high{% elif s >= 40 %}fill-mid{% else %}fill-low{% endif %}" style="width: {{ s }}%"></div>
+      </div>
+    </div>
+    {% endwith %}
+  </div>
+
+  <!-- ─── Style issues ─────────────────────────────────────────────────── -->
+  {% with cat=analysis.report_details.style %}
+  <details class="section">
+    <summary>
+      Code Style
+      <span style="font-weight:400; color:#8b949e; font-size:0.85rem;">{{ cat.summary }}</span>
+    </summary>
+    <div class="section-body">
+      {% if cat.error %}
+        <div class="error-box">Tool error: {{ cat.error }}</div>
+      {% elif cat.issues %}
+        <table class="issue-table">
+          <thead>
+            <tr><th>File</th><th>Line</th><th>Code</th><th>Message</th></tr>
+          </thead>
+          <tbody>
+            {% for issue in cat.issues %}
+            <tr>
+              <td>{{ issue.file }}</td>
+              <td>{{ issue.line }}</td>
+              <td><code>{{ issue.code }}</code></td>
+              <td>{{ issue.message }}</td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      {% else %}
+        <p class="no-issues">&#10003; No style issues found.</p>
+      {% endif %}
+    </div>
+  </details>
+  {% endwith %}
+
+  <!-- ─── Security findings ─────────────────────────────────────────────── -->
+  {% with cat=analysis.report_details.security %}
+  <details class="section">
+    <summary>
+      Security
+      <span style="font-weight:400; color:#8b949e; font-size:0.85rem;">{{ cat.summary }}</span>
+    </summary>
+    <div class="section-body">
+      {% if cat.error %}
+        <div class="error-box">Tool error: {{ cat.error }}</div>
+      {% elif cat.issues %}
+        <table class="issue-table">
+          <thead>
+            <tr><th>File</th><th>Line</th><th>Severity</th><th>Confidence</th><th>Message</th></tr>
+          </thead>
+          <tbody>
+            {% for issue in cat.issues %}
+            <tr>
+              <td>{{ issue.file }}</td>
+              <td>{{ issue.line }}</td>
+              <td>
+                <span class="badge
+                  {% if issue.severity == 'HIGH' %}badge-high
+                  {% elif issue.severity == 'MEDIUM' %}badge-medium
+                  {% else %}badge-low{% endif %}">
+                  {{ issue.severity }}
+                </span>
+              </td>
+              <td>{{ issue.confidence }}</td>
+              <td>{{ issue.message }}</td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      {% else %}
+        <p class="no-issues">&#10003; No security issues found.</p>
+      {% endif %}
+    </div>
+  </details>
+  {% endwith %}
+
+  <!-- ─── Architecture / Complexity ─────────────────────────────────────── -->
+  {% with cat=analysis.report_details.architecture %}
+  <details class="section">
+    <summary>
+      Architecture &amp; Complexity
+      <span style="font-weight:400; color:#8b949e; font-size:0.85rem;">{{ cat.summary }}</span>
+    </summary>
+    <div class="section-body">
+      {% if cat.error %}
+        <div class="error-box">Tool error: {{ cat.error }}</div>
+      {% else %}
+        <p class="summary-text">
+          Average cyclomatic complexity: <strong>{{ cat.avg_complexity }}</strong>
+          (Grade <strong>{{ cat.avg_grade }}</strong>)
+        </p>
+        {% if cat.issues %}
+          <table class="issue-table">
+            <thead>
+              <tr><th>File</th><th>Function / Method</th><th>Complexity</th><th>Rank</th></tr>
+            </thead>
+            <tbody>
+              {% for issue in cat.issues %}
+              <tr>
+                <td>{{ issue.file }}</td>
+                <td><code>{{ issue.name }}</code></td>
+                <td>{{ issue.complexity }}</td>
+                <td>
+                  <span class="badge
+                    {% if issue.rank == 'F' or issue.rank == 'E' %}badge-high
+                    {% elif issue.rank == 'D' or issue.rank == 'C' %}badge-medium
+                    {% else %}badge-low{% endif %}">
+                    {{ issue.rank }}
+                  </span>
+                </td>
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        {% else %}
+          <p class="no-issues">&#10003; All functions rated A or B.</p>
+        {% endif %}
+      {% endif %}
+    </div>
+  </details>
+  {% endwith %}
+
+  <a href="{% url 'index' %}" class="back-link">&#8592; Analyze another repository</a>
+
+  <!-- ─── Black formatting ─────────────────────────────────────────────── -->
+  {% with cat=analysis.report_details.black %}
+  <details class="section" style="margin-top:1.25rem;">
+    <summary>
+      Black Formatting
+      <span style="font-weight:400; color:#8b949e; font-size:0.85rem;">{{ cat.summary }}</span>
+    </summary>
+    <div class="section-body">
+      {% if cat.error %}
+        <div class="error-box">Tool error: {{ cat.error }}</div>
+      {% elif cat.files %}
+        <table class="issue-table">
+          <thead>
+            <tr><th>File</th><th>Action needed</th></tr>
+          </thead>
+          <tbody>
+            {% for f in cat.files %}
+            <tr>
+              <td>{{ f }}</td>
+              <td>Would be reformatted</td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      {% else %}
+        <p class="no-issues">&#10003; All files are already black-formatted.</p>
+      {% endif %}
+    </div>
+  </details>
+  {% endwith %}
+
+  <!-- ─── Ruff issues ──────────────────────────────────────────────────── -->
+  {% with cat=analysis.report_details.ruff %}
+  <details class="section">
+    <summary>
+      Ruff
+      <span style="font-weight:400; color:#8b949e; font-size:0.85rem;">{{ cat.summary }}</span>
+    </summary>
+    <div class="section-body">
+      {% if cat.error %}
+        <div class="error-box">Tool error: {{ cat.error }}</div>
+      {% elif cat.issues %}
+        <table class="issue-table">
+          <thead>
+            <tr><th>File</th><th>Line</th><th>Code</th><th>Message</th></tr>
+          </thead>
+          <tbody>
+            {% for issue in cat.issues %}
+            <tr>
+              <td>{{ issue.file }}</td>
+              <td>{{ issue.line }}</td>
+              <td><code>{{ issue.code }}</code></td>
+              <td>{{ issue.message }}</td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      {% else %}
+        <p class="no-issues">&#10003; No ruff issues found.</p>
+      {% endif %}
+    </div>
+  </details>
+  {% endwith %}
+
+  <!-- ─── Pylint issues ────────────────────────────────────────────────── -->
+  {% with cat=analysis.report_details.pylint %}
+  <details class="section">
+    <summary>
+      Pylint
+      <span style="font-weight:400; color:#8b949e; font-size:0.85rem;">{{ cat.summary }}</span>
+    </summary>
+    <div class="section-body">
+      {% if cat.error %}
+        <div class="error-box">Tool error: {{ cat.error }}</div>
+      {% elif cat.issues %}
+        <table class="issue-table">
+          <thead>
+            <tr><th>File</th><th>Line</th><th>Type</th><th>Symbol</th><th>Message</th></tr>
+          </thead>
+          <tbody>
+            {% for issue in cat.issues %}
+            <tr>
+              <td>{{ issue.file }}</td>
+              <td>{{ issue.line }}</td>
+              <td>
+                <span class="badge
+                  {% if issue.type == 'error' or issue.type == 'fatal' %}badge-high
+                  {% elif issue.type == 'warning' %}badge-medium
+                  {% else %}badge-low{% endif %}">
+                  {{ issue.type }}
+                </span>
+              </td>
+              <td><code>{{ issue.symbol }}</code></td>
+              <td>{{ issue.message }}</td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      {% else %}
+        <p class="no-issues">&#10003; No pylint issues found.</p>
+      {% endif %}
+    </div>
+  </details>
+  {% endwith %}
+
+  <!-- ─── Mypy type errors ─────────────────────────────────────────────── -->
+  {% with cat=analysis.report_details.mypy %}
+  <details class="section">
+    <summary>
+      Mypy Type Safety
+      <span style="font-weight:400; color:#8b949e; font-size:0.85rem;">{{ cat.summary }}</span>
+    </summary>
+    <div class="section-body">
+      {% if cat.error %}
+        <div class="error-box">Tool error: {{ cat.error }}</div>
+      {% elif cat.issues %}
+        <table class="issue-table">
+          <thead>
+            <tr><th>File</th><th>Line</th><th>Severity</th><th>Message</th></tr>
+          </thead>
+          <tbody>
+            {% for issue in cat.issues %}
+            <tr>
+              <td>{{ issue.file }}</td>
+              <td>{{ issue.line }}</td>
+              <td>
+                <span class="badge
+                  {% if issue.severity == 'error' %}badge-high
+                  {% elif issue.severity == 'warning' %}badge-medium
+                  {% else %}badge-low{% endif %}">
+                  {{ issue.severity }}
+                </span>
+              </td>
+              <td>{{ issue.message }}</td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      {% else %}
+        <p class="no-issues">&#10003; No mypy type errors found.</p>
+      {% endif %}
+    </div>
+  </details>
+  {% endwith %}
+
+</div>
+</body>
+</html>
