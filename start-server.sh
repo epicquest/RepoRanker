@@ -16,6 +16,15 @@ if [[ -f "$PID_FILE" ]]; then
 fi
 
 cd "$SCRIPT_DIR"
+
+# Export .env variables so child processes (e.g. pytest subprocesses) inherit them.
+if [[ -f "$SCRIPT_DIR/.env" ]]; then
+    set -a
+    # shellcheck source=.env
+    source "$SCRIPT_DIR/.env"
+    set +a
+fi
+
 nohup .venv/bin/python manage.py runserver localhost:5000 >> "$LOG_FILE" 2>&1 &
 echo $! > "$PID_FILE"
 echo "Server started (PID $(cat "$PID_FILE")). Logging to $LOG_FILE"

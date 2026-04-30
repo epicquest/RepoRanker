@@ -202,6 +202,21 @@
       }
       advance();
     });
+
+    // When the browser restores this page from the back-forward cache, the DOM
+    // is replayed with the button disabled and the progress bar mid-animation.
+    // Reset everything so the user can submit a new analysis.
+    window.addEventListener("pageshow", function (event) {
+      if (event.persisted) {
+        const btn  = document.getElementById("submit-btn");
+        const wrap = document.getElementById("progress-wrap");
+        const fill = document.getElementById("progress-fill");
+        btn.disabled    = false;
+        btn.textContent = "Analyze Repository";
+        wrap.classList.remove("visible");
+        fill.style.width = "0%";
+      }
+    });
   </script>
 </body>
 </html>
