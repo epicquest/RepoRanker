@@ -9,7 +9,8 @@ import json
 import os
 import re
 import shutil
-import subprocess
+import subprocess  # nosec B404
+import sys
 import tempfile
 
 import git
@@ -17,6 +18,19 @@ import git
 from .models import RepositoryAnalysis
 
 GITHUB_URL_RE = re.compile(r"^https://github\.com/[\w.\-]+/[\w.\-]+(\.git)?/?$")
+
+
+def _find_tool(name: str) -> str:
+    """Return the absolute path to *name* on PATH.
+
+    Raises FileNotFoundError if the tool is not installed.
+    Caught by the ``except OSError`` blocks in each ``run_*`` function.
+    """
+    resolved = shutil.which(name)
+    if resolved is None:
+        raise FileNotFoundError(f"Required tool not found: {name!r}")
+    return resolved
+
 
 # ---------------------------------------------------------------------------
 # Repository cloning
@@ -73,9 +87,9 @@ def run_flake8(path: str) -> dict:
         }
     """
     try:
-        result = subprocess.run(
+        result = subprocess.run(  # nosec B603
             [
-                "flake8",
+                _find_tool("flake8"),
                 path,
                 "--format=%(path)s:%(row)d:%(col)d:%(code)s:%(text)s",
                 "--max-line-length=120",
@@ -124,8 +138,8 @@ def run_bandit(path: str) -> dict:
         }
     """
     try:
-        result = subprocess.run(
-            ["bandit", "-r", path, "-f", "json", "-q", "--exit-zero"],
+        result = subprocess.run(  # nosec B603
+            [_find_tool("bandit"), "-r", path, "-f", "json", "-q", "--exit-zero"],
             capture_output=True,
             text=True,
             timeout=120,
@@ -198,8 +212,8 @@ def _parse_radon_cc(cc_data: dict, base_path: str) -> tuple:
 def _fetch_radon_mi(path: str) -> dict:
     """Run radon mi on *path* and return a {short_filepath: mi_score} mapping."""
     try:
-        mi_result = subprocess.run(
-            ["radon", "mi", "-j", path],
+        mi_result = subprocess.run(  # nosec B603
+            [_find_tool("radon"), "mi", "-j", path],
             capture_output=True,
             text=True,
             timeout=120,
@@ -233,8 +247,8 @@ def run_radon(path: str) -> dict:
     """
     # --- Cyclomatic complexity -------------------------------------------------
     try:
-        cc_result = subprocess.run(
-            ["radon", "cc", "-j", path],
+        cc_result = subprocess.run(  # nosec B603
+            [_find_tool("radon"), "cc", "-j", path],
             capture_output=True,
             text=True,
             timeout=120,
@@ -281,8 +295,8 @@ def run_black(path: str) -> dict:
         }
     """
     try:
-        result = subprocess.run(
-            ["black", "--check", path],
+        result = subprocess.run(  # nosec B603
+            [_find_tool("black"), "--check", path],
             capture_output=True,
             text=True,
             timeout=120,
@@ -322,9 +336,9 @@ def run_mypy(path: str) -> dict:
         }
     """
     try:
-        result = subprocess.run(
+        result = subprocess.run(  # nosec B603
             [
-                "mypy",
+                _find_tool("mypy"),
                 path,
                 "--ignore-missing-imports",
                 "--no-error-summary",
@@ -371,8 +385,8 @@ def run_ruff(path: str) -> dict:
         }
     """
     try:
-        result = subprocess.run(
-            ["ruff", "check", path, "--output-format=json", "--exit-zero"],
+        result = subprocess.run(  # nosec B603
+            [_find_tool("ruff"), "check", path, "--output-format=json", "--exit-zero"],
             capture_output=True,
             text=True,
             timeout=120,
@@ -419,9 +433,9 @@ def run_pylint(path: str) -> dict:
         }
     """
     try:
-        result = subprocess.run(
+        result = subprocess.run(  # nosec B603
             [
-                "pylint",
+                _find_tool("pylint"),
                 path,
                 "--recursive=y",
                 "--load-plugins=pylint_django",
@@ -486,9 +500,9 @@ def run_pytest_coverage(path: str) -> dict:
         }
     """
     try:
-        result = subprocess.run(
+        result = subprocess.run(  # nosec B603
             [
-                "python",
+                sys.executable,
                 "-m",
                 "pytest",
                 "--cov=.",
@@ -561,8 +575,8 @@ def run_vulture(path: str) -> dict:
         }
     """
     try:
-        result = subprocess.run(
-            ["vulture", path, "--min-confidence", "60"],
+        result = subprocess.run(  # nosec B603
+            [_find_tool("vulture"), path, "--min-confidence", "60"],
             capture_output=True,
             text=True,
             timeout=120,

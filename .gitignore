@@ -4,3 +4,4 @@
 /server.log
 /server.pid
 /db.sqlite3
+/.env

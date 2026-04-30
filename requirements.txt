@@ -1,5 +1,6 @@
 Django>=4.2,<5.0
 GitPython>=3.1
+python-decouple>=3.8
 flake8>=6.0
 bandit>=1.7
 radon>=6.0
