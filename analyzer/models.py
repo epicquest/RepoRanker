@@ -1,7 +1,11 @@
+"""Django ORM models for RepoRanker."""
+
 from django.db import models
 
 
 class RepositoryAnalysis(models.Model):
+    """Persisted result of analysing a single GitHub repository."""
+
     repo_url = models.URLField(max_length=500)
     style_score = models.IntegerField(default=0)
     security_score = models.IntegerField(default=0)
@@ -14,7 +18,9 @@ class RepositoryAnalysis(models.Model):
     report_details = models.JSONField(default=dict)
     created_at = models.DateTimeField(auto_now_add=True)
 
-    class Meta:
+    class Meta:  # pylint: disable=too-few-public-methods
+        """Django model metadata."""
+
         ordering = ["-created_at"]
 
     def __str__(self):

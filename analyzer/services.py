@@ -4,6 +4,7 @@ services.py — all business logic for RepoRanker.
 Public API:
     analyze_repository(repo_url) -> RepositoryAnalysis
 """
+
 import json
 import os
 import re
@@ -15,9 +16,7 @@ import git
 
 from .models import RepositoryAnalysis
 
-GITHUB_URL_RE = re.compile(
-    r'^https://github\.com/[\w.\-]+/[\w.\-]+(\.git)?/?$'
-)
+GITHUB_URL_RE = re.compile(r"^https://github\.com/[\w.\-]+/[\w.\-]+(\.git)?/?$")
 
 # ---------------------------------------------------------------------------
 # Repository cloning
@@ -85,8 +84,9 @@ def run_flake8(path: str) -> dict:
             capture_output=True,
             text=True,
             timeout=120,
+            check=False,
         )
-    except Exception as exc:  # noqa: BLE001
+    except (OSError, subprocess.SubprocessError) as exc:
         return {"issues": [], "summary": "flake8 execution failed", "error": str(exc)}
 
     issues = []
@@ -94,13 +94,15 @@ def run_flake8(path: str) -> dict:
         parts = line.split(":", 4)
         if len(parts) >= 5:
             try:
-                issues.append({
-                    "file": parts[0].replace(path, "").lstrip("/\\"),
-                    "line": int(parts[1]),
-                    "col": int(parts[2]),
-                    "code": parts[3].strip(),
-                    "message": parts[4].strip(),
-                })
+                issues.append(
+                    {
+                        "file": parts[0].replace(path, "").lstrip("/\\"),
+                        "line": int(parts[1]),
+                        "col": int(parts[2]),
+                        "code": parts[3].strip(),
+                        "message": parts[4].strip(),
+                    }
+                )
             except (ValueError, IndexError):
                 continue
 
@@ -127,8 +129,9 @@ def run_bandit(path: str) -> dict:
             capture_output=True,
             text=True,
             timeout=120,
+            check=False,
         )
-    except Exception as exc:  # noqa: BLE001
+    except (OSError, subprocess.SubprocessError) as exc:
         return {"issues": [], "summary": "bandit execution failed", "error": str(exc)}
 
     try:
@@ -143,13 +146,15 @@ def run_bandit(path: str) -> dict:
 
     issues = []
     for item in data.get("results", []):
-        issues.append({
-            "file": item.get("filename", "").replace(path, "").lstrip("/\\"),
-            "line": item.get("line_number", 0),
-            "severity": item.get("issue_severity", "UNKNOWN").upper(),
-            "confidence": item.get("issue_confidence", "UNKNOWN").upper(),
-            "message": item.get("issue_text", ""),
-        })
+        issues.append(
+            {
+                "file": item.get("filename", "").replace(path, "").lstrip("/\\"),
+                "line": item.get("line_number", 0),
+                "severity": item.get("issue_severity", "UNKNOWN").upper(),
+                "confidence": item.get("issue_confidence", "UNKNOWN").upper(),
+                "message": item.get("issue_text", ""),
+            }
+        )
 
     counts = {"LOW": 0, "MEDIUM": 0, "HIGH": 0}
     for issue in issues:
@@ -162,6 +167,52 @@ def run_bandit(path: str) -> dict:
         f"{counts['HIGH']} high, {counts['MEDIUM']} medium, {counts['LOW']} low."
     )
     return {"issues": issues, "summary": summary, "error": None}
+
+
+def _parse_radon_cc(cc_data: dict, base_path: str) -> tuple:
+    """Parse radon CC JSON output into issues list, avg complexity, and grade."""
+    issues = []
+    all_complexities = []
+    for filepath, functions in cc_data.items():
+        short_path = filepath.replace(base_path, "").lstrip("/\\")
+        for func in functions:
+            complexity = func.get("complexity", 0)
+            rank = func.get("rank", "A")
+            all_complexities.append(complexity)
+            if rank not in ("A", "B"):
+                issues.append(
+                    {
+                        "file": short_path,
+                        "name": func.get("name", "?"),
+                        "complexity": complexity,
+                        "rank": rank,
+                    }
+                )
+    avg_complexity = (
+        sum(all_complexities) / len(all_complexities) if all_complexities else 0.0
+    )
+    avg_grade = _complexity_to_grade(avg_complexity)
+    return issues, round(avg_complexity, 2), avg_grade
+
+
+def _fetch_radon_mi(path: str) -> dict:
+    """Run radon mi on *path* and return a {short_filepath: mi_score} mapping."""
+    try:
+        mi_result = subprocess.run(
+            ["radon", "mi", "-j", path],
+            capture_output=True,
+            text=True,
+            timeout=120,
+            check=False,
+        )
+        mi_data = json.loads(mi_result.stdout)
+    except (OSError, subprocess.SubprocessError, json.JSONDecodeError):
+        return {}
+    mi_scores = {}
+    for filepath, info in mi_data.items():
+        short_path = filepath.replace(path, "").lstrip("/\\")
+        mi_scores[short_path] = info.get("mi", info) if isinstance(info, dict) else info
+    return mi_scores
 
 
 def run_radon(path: str) -> dict:
@@ -187,9 +238,10 @@ def run_radon(path: str) -> dict:
             capture_output=True,
             text=True,
             timeout=120,
+            check=False,
         )
         cc_data = json.loads(cc_result.stdout)
-    except Exception as exc:  # noqa: BLE001
+    except (OSError, subprocess.SubprocessError, json.JSONDecodeError) as exc:
         return {
             "avg_complexity": 0.0,
             "avg_grade": "A",
@@ -199,51 +251,15 @@ def run_radon(path: str) -> dict:
             "error": str(exc),
         }
 
-    issues = []
-    all_complexities = []
-    for filepath, functions in cc_data.items():
-        short_path = filepath.replace(path, "").lstrip("/\\")
-        for func in functions:
-            complexity = func.get("complexity", 0)
-            rank = func.get("rank", "A")
-            all_complexities.append(complexity)
-            if rank not in ("A", "B"):
-                issues.append({
-                    "file": short_path,
-                    "name": func.get("name", "?"),
-                    "complexity": complexity,
-                    "rank": rank,
-                })
-
-    avg_complexity = (
-        sum(all_complexities) / len(all_complexities) if all_complexities else 0.0
-    )
-    avg_grade = _complexity_to_grade(avg_complexity)
-
-    # --- Maintainability Index ------------------------------------------------
-    mi_scores = {}
-    try:
-        mi_result = subprocess.run(
-            ["radon", "mi", "-j", path],
-            capture_output=True,
-            text=True,
-            timeout=120,
-        )
-        mi_data = json.loads(mi_result.stdout)
-        for filepath, info in mi_data.items():
-            short_path = filepath.replace(path, "").lstrip("/\\")
-            mi_scores[short_path] = (
-                info.get("mi", info) if isinstance(info, dict) else info
-            )
-    except Exception:  # noqa: BLE001
-        pass  # MI is supplementary; failures are tolerated
+    issues, avg_complexity, avg_grade = _parse_radon_cc(cc_data, path)
+    mi_scores = _fetch_radon_mi(path)
 
     summary = (
         f"Average cyclomatic complexity: {avg_complexity:.1f} (grade {avg_grade}). "
         f"{len(issues)} function(s) rated C or worse."
     )
     return {
-        "avg_complexity": round(avg_complexity, 2),
+        "avg_complexity": avg_complexity,
         "avg_grade": avg_grade,
         "issues": issues,
         "mi_scores": mi_scores,
@@ -270,14 +286,15 @@ def run_black(path: str) -> dict:
             capture_output=True,
             text=True,
             timeout=120,
+            check=False,
         )
-    except Exception as exc:  # noqa: BLE001
+    except (OSError, subprocess.SubprocessError) as exc:
         return {"files": [], "summary": "black execution failed", "error": str(exc)}
 
     files = []
     for line in result.stderr.splitlines():
         if line.startswith("would reformat "):
-            filepath = line[len("would reformat "):].strip()
+            filepath = line[len("would reformat ") :].strip()
             files.append(filepath.replace(path, "").lstrip("/\\"))
 
     summary = (
@@ -288,7 +305,7 @@ def run_black(path: str) -> dict:
     return {"files": files, "summary": summary, "error": None}
 
 
-_MYPY_LINE_RE = re.compile(r'^(.+?):(\d+):\s+(error|warning|note):\s+(.*)$')
+_MYPY_LINE_RE = re.compile(r"^(.+?):(\d+):\s+(error|warning|note):\s+(.*)$")
 
 
 def run_mypy(path: str) -> dict:
@@ -316,20 +333,23 @@ def run_mypy(path: str) -> dict:
             capture_output=True,
             text=True,
             timeout=180,
+            check=False,
         )
-    except Exception as exc:  # noqa: BLE001
+    except (OSError, subprocess.SubprocessError) as exc:
         return {"issues": [], "summary": "mypy execution failed", "error": str(exc)}
 
     issues = []
     for line in result.stdout.splitlines():
         m = _MYPY_LINE_RE.match(line)
         if m:
-            issues.append({
-                "file": m.group(1).replace(path, "").lstrip("/\\"),
-                "line": int(m.group(2)),
-                "severity": m.group(3),
-                "message": m.group(4).strip(),
-            })
+            issues.append(
+                {
+                    "file": m.group(1).replace(path, "").lstrip("/\\"),
+                    "line": int(m.group(2)),
+                    "severity": m.group(3),
+                    "message": m.group(4).strip(),
+                }
+            )
 
     errors = sum(1 for i in issues if i["severity"] == "error")
     warnings = sum(1 for i in issues if i["severity"] == "warning")
@@ -356,6 +376,7 @@ def run_ruff(path: str) -> dict:
             capture_output=True,
             text=True,
             timeout=120,
+            check=False,
         )
         data = json.loads(result.stdout)
     except json.JSONDecodeError:
@@ -365,18 +386,20 @@ def run_ruff(path: str) -> dict:
             "summary": "ruff produced no parseable output",
             "error": stderr,
         }
-    except Exception as exc:  # noqa: BLE001
+    except (OSError, subprocess.SubprocessError) as exc:
         return {"issues": [], "summary": "ruff execution failed", "error": str(exc)}
 
     issues = []
     for item in data:
-        issues.append({
-            "file": item.get("filename", "").replace(path, "").lstrip("/\\"),
-            "line": item.get("location", {}).get("row", 0),
-            "col": item.get("location", {}).get("column", 0),
-            "code": item.get("code", ""),
-            "message": item.get("message", ""),
-        })
+        issues.append(
+            {
+                "file": item.get("filename", "").replace(path, "").lstrip("/\\"),
+                "line": item.get("location", {}).get("row", 0),
+                "col": item.get("location", {}).get("column", 0),
+                "code": item.get("code", ""),
+                "message": item.get("message", ""),
+            }
+        )
 
     summary = f"{len(issues)} linting issue(s) found by ruff."
     return {"issues": issues, "summary": summary, "error": None}
@@ -407,6 +430,7 @@ def run_pylint(path: str) -> dict:
             capture_output=True,
             text=True,
             timeout=180,
+            check=False,
         )
         data = json.loads(result.stdout)
     except json.JSONDecodeError:
@@ -416,19 +440,21 @@ def run_pylint(path: str) -> dict:
             "summary": "pylint produced no parseable output",
             "error": stderr,
         }
-    except Exception as exc:  # noqa: BLE001
+    except (OSError, subprocess.SubprocessError) as exc:
         return {"issues": [], "summary": "pylint execution failed", "error": str(exc)}
 
     issues = []
     for item in data:
-        issues.append({
-            "file": item.get("path", "").replace(path, "").lstrip("/\\"),
-            "line": item.get("line", 0),
-            "type": item.get("type", ""),
-            "symbol": item.get("symbol", ""),
-            "message": item.get("message", ""),
-            "message_id": item.get("message-id", ""),
-        })
+        issues.append(
+            {
+                "file": item.get("path", "").replace(path, "").lstrip("/\\"),
+                "line": item.get("line", 0),
+                "type": item.get("type", ""),
+                "symbol": item.get("symbol", ""),
+                "message": item.get("message", ""),
+                "message_id": item.get("message-id", ""),
+            }
+        )
 
     counts = {"convention": 0, "refactor": 0, "warning": 0, "error": 0, "fatal": 0}
     for issue in issues:
@@ -460,7 +486,9 @@ def run_pytest_coverage(path: str) -> dict:
     try:
         result = subprocess.run(
             [
-                "python", "-m", "pytest",
+                "python",
+                "-m",
+                "pytest",
                 "--cov=.",
                 "--cov-report=term-missing",
                 "--no-header",
@@ -471,12 +499,21 @@ def run_pytest_coverage(path: str) -> dict:
             text=True,
             timeout=180,
             cwd=path,
+            check=False,
         )
-    except Exception as exc:  # noqa: BLE001
-        return {"coverage_pct": None, "files": {}, "summary": "pytest execution failed", "error": str(exc)}
+    except (OSError, subprocess.SubprocessError) as exc:
+        return {
+            "coverage_pct": None,
+            "files": {},
+            "summary": "pytest execution failed",
+            "error": str(exc),
+        }
 
     # No tests collected
-    if "no tests ran" in result.stdout.lower() or "no tests ran" in result.stderr.lower():
+    if (
+        "no tests ran" in result.stdout.lower()
+        or "no tests ran" in result.stderr.lower()
+    ):
         return {
             "coverage_pct": 0,
             "files": {},
@@ -487,8 +524,8 @@ def run_pytest_coverage(path: str) -> dict:
     # Parse per-file coverage and TOTAL line
     files: dict = {}
     coverage_pct: int = 0
-    _cov_line_re = re.compile(r'^(\S+\.py)\s+\d+\s+\d+\s+(\d+)%')
-    _total_re = re.compile(r'^TOTAL\s+\d+\s+\d+\s+(\d+)%')
+    _cov_line_re = re.compile(r"^(\S+\.py)\s+\d+\s+\d+\s+(\d+)%")
+    _total_re = re.compile(r"^TOTAL\s+\d+\s+\d+\s+(\d+)%")
 
     for line in result.stdout.splitlines():
         m_total = _total_re.match(line)
@@ -500,7 +537,12 @@ def run_pytest_coverage(path: str) -> dict:
             files[m_file.group(1)] = int(m_file.group(2))
 
     summary = f"Test coverage: {coverage_pct}%."
-    return {"coverage_pct": coverage_pct, "files": files, "summary": summary, "error": None}
+    return {
+        "coverage_pct": coverage_pct,
+        "files": files,
+        "summary": summary,
+        "error": None,
+    }
 
 
 def run_vulture(path: str) -> dict:
@@ -522,31 +564,56 @@ def run_vulture(path: str) -> dict:
             capture_output=True,
             text=True,
             timeout=120,
+            check=False,
         )
-    except Exception as exc:  # noqa: BLE001
+    except (OSError, subprocess.SubprocessError) as exc:
         return {"items": [], "summary": "vulture execution failed", "error": str(exc)}
 
     # Line format: /abs/path/file.py:42: unused function 'foo' (60% confidence)
     _vulture_re = re.compile(
-        r'^(.+?):(\d+): unused (\w+(?:\s+\w+)*) \'(.+?)\' \((\d+)% confidence\)$'
+        r"^(.+?):(\d+): unused (\w+(?:\s+\w+)*) \'(.+?)\' \((\d+)% confidence\)$"
     )
     items = []
     for line in result.stdout.splitlines():
         m = _vulture_re.match(line)
         if m:
-            items.append({
-                "file": m.group(1).replace(path, "").lstrip("/\\"),
-                "line": int(m.group(2)),
-                "kind": m.group(3),
-                "name": m.group(4),
-                "confidence": int(m.group(5)),
-            })
+            items.append(
+                {
+                    "file": m.group(1).replace(path, "").lstrip("/\\"),
+                    "line": int(m.group(2)),
+                    "kind": m.group(3),
+                    "name": m.group(4),
+                    "confidence": int(m.group(5)),
+                }
+            )
 
     summary = f"{len(items)} unused code item(s) found by vulture."
     return {"items": items, "summary": summary, "error": None}
 
 
-_TODO_RE = re.compile(r'\b(TODO|FIXME|HACK|XXX)\b.*', re.IGNORECASE)
+_TODO_RE = re.compile(r"\b(TODO|FIXME|HACK|XXX)\b.*", re.IGNORECASE)
+
+
+def _scan_file_for_todos(filepath: str, base_path: str) -> list:
+    """Scan a single .py file for TODO/FIXME/HACK/XXX comments."""
+    results = []
+    short_path = filepath.replace(base_path, "").lstrip("/\\")
+    try:
+        with open(filepath, encoding="utf-8", errors="ignore") as fh:
+            for lineno, raw_line in enumerate(fh, start=1):
+                m = _TODO_RE.search(raw_line)
+                if m:
+                    results.append(
+                        {
+                            "file": short_path,
+                            "line": lineno,
+                            "keyword": m.group(1).upper(),
+                            "text": raw_line.strip(),
+                        }
+                    )
+    except OSError:
+        pass
+    return results
 
 
 def run_todo_fixme(path: str) -> dict:
@@ -566,38 +633,32 @@ def run_todo_fixme(path: str) -> dict:
     try:
         occurrences = []
         counts: dict = {"TODO": 0, "FIXME": 0, "HACK": 0, "XXX": 0}
-
         for dirpath, _dirs, filenames in os.walk(path):
             for filename in filenames:
                 if not filename.endswith(".py"):
                     continue
-                filepath = os.path.join(dirpath, filename)
-                short_path = filepath.replace(path, "").lstrip("/\\")
-                try:
-                    with open(filepath, encoding="utf-8", errors="ignore") as fh:
-                        for lineno, raw_line in enumerate(fh, start=1):
-                            m = _TODO_RE.search(raw_line)
-                            if m:
-                                keyword = m.group(1).upper()
-                                counts[keyword] = counts.get(keyword, 0) + 1
-                                occurrences.append({
-                                    "file": short_path,
-                                    "line": lineno,
-                                    "keyword": keyword,
-                                    "text": raw_line.strip(),
-                                })
-                except OSError:
-                    continue
-
+                for item in _scan_file_for_todos(os.path.join(dirpath, filename), path):
+                    occurrences.append(item)
+                    counts[item["keyword"]] = counts.get(item["keyword"], 0) + 1
         total = sum(counts.values())
         summary = (
             f"{total} technical debt comment(s): "
             f"{counts['TODO']} TODO, {counts['FIXME']} FIXME, "
             f"{counts['HACK']} HACK, {counts['XXX']} XXX."
         )
-        return {"occurrences": occurrences, "counts": counts, "summary": summary, "error": None}
-    except Exception as exc:  # noqa: BLE001
-        return {"occurrences": [], "counts": {}, "summary": "todo scan failed", "error": str(exc)}
+        return {
+            "occurrences": occurrences,
+            "counts": counts,
+            "summary": summary,
+            "error": None,
+        }
+    except OSError as exc:
+        return {
+            "occurrences": [],
+            "counts": {},
+            "summary": "todo scan failed",
+            "error": str(exc),
+        }
 
 
 def _complexity_to_grade(avg: float) -> str:
@@ -615,106 +676,137 @@ def _complexity_to_grade(avg: float) -> str:
 
 
 # ---------------------------------------------------------------------------
+# Score helpers
+# ---------------------------------------------------------------------------
+
+
+def _compute_style_score(tool_results: dict) -> int:
+    """Compute style score from flake8, ruff, black, and pylint results."""
+
+    def _score(count: int, per: int = 1) -> int:
+        return max(0, 100 - count * per)
+
+    flake8_r = tool_results["flake8_result"]
+    ruff_r = tool_results["ruff_result"]
+    black_r = tool_results["black_result"]
+    pylint_r = tool_results["pylint_result"]
+    f8 = (
+        _score(len(flake8_r.get("issues", [])))
+        if flake8_r.get("error") is None
+        else 100
+    )
+    rf = _score(len(ruff_r.get("issues", []))) if ruff_r.get("error") is None else 100
+    bk = (
+        _score(len(black_r.get("files", [])), 10)
+        if black_r.get("error") is None
+        else 100
+    )
+    deductions = {"convention": 1, "refactor": 1, "warning": 2, "error": 5, "fatal": 10}
+    py_total = (
+        sum(deductions.get(i.get("type", ""), 0) for i in pylint_r.get("issues", []))
+        if pylint_r.get("error") is None
+        else 0
+    )
+    return (f8 + rf + bk + max(0, 100 - py_total)) // 4
+
+
+def _compute_security_score(tool_results: dict) -> int:
+    """Compute security score from bandit result."""
+    bandit_r = tool_results["bandit_result"]
+    score = 100
+    if bandit_r.get("error") is None:
+        deductions = {"LOW": 2, "MEDIUM": 5, "HIGH": 10}
+        for issue in bandit_r.get("issues", []):
+            score -= deductions.get(issue.get("severity", ""), 0)
+    return max(0, min(100, score))
+
+
+def _compute_architecture_score(tool_results: dict) -> int:
+    """Compute architecture score from radon result."""
+    radon_r = tool_results["radon_result"]
+    score = 100
+    if radon_r.get("error") is None:
+        grade_deductions = {"A": 0, "B": 0, "C": 10, "D": 20, "E": 40, "F": 40}
+        score -= grade_deductions.get(radon_r.get("avg_grade", "A"), 0)
+    return max(0, min(100, score))
+
+
+def _compute_type_safety_score(tool_results: dict) -> int:
+    """Compute type safety score from mypy result."""
+    mypy_r = tool_results["mypy_result"]
+    if mypy_r.get("error") is not None:
+        return 100
+    errors = sum(1 for i in mypy_r.get("issues", []) if i.get("severity") == "error")
+    return max(0, 100 - errors * 5)
+
+
+def _compute_coverage_score(tool_results: dict) -> int:
+    """Compute test coverage score."""
+    cov_r = tool_results["coverage_result"]
+    if cov_r.get("error") is not None:
+        return 0
+    pct = cov_r.get("coverage_pct")
+    if pct is None:
+        return 0
+    score = int(pct)
+    if score < 60:
+        score = max(0, score - (60 - score) // 2)
+    return max(0, min(100, score))
+
+
+def _compute_dead_code_score(tool_results: dict) -> int:
+    """Compute dead code score from vulture result."""
+    vulture_r = tool_results["vulture_result"]
+    if vulture_r.get("error") is not None:
+        return 100
+    return max(0, 100 - len(vulture_r.get("items", [])) * 3)
+
+
+def _compute_todo_score(tool_results: dict) -> int:
+    """Compute TODO/FIXME density score."""
+    todo_r = tool_results["todo_result"]
+    total = sum(todo_r.get("counts", {}).values())
+    return max(0, 100 - total * 2)
+
+
+# ---------------------------------------------------------------------------
 # Scoring
 # ---------------------------------------------------------------------------
 
 
-def calculate_scores(
-    flake8_result: dict,
-    bandit_result: dict,
-    radon_result: dict,
-    black_result: dict,
-    mypy_result: dict,
-    ruff_result: dict,
-    pylint_result: dict,
-    coverage_result: dict,
-    vulture_result: dict,
-    todo_result: dict,
-) -> dict:
+def calculate_scores(tool_results: dict) -> dict:
     """
     Compute scores for each category and an overall weighted score.
+
+    *tool_results* must be a dict with keys: flake8_result, bandit_result,
+    radon_result, black_result, mypy_result, ruff_result, pylint_result,
+    coverage_result, vulture_result, todo_result.
 
     Returns keys: style, security, architecture, type_safety,
                   coverage, dead_code, todo, overall  — each int in [0, 100].
     """
-    def _tool_style_score(issues_count: int, per_issue: int = 1) -> int:
-        return max(0, 100 - issues_count * per_issue)
-
-    # --- Style ---------------------------------------------------------------
-    flake8_score = (
-        _tool_style_score(len(flake8_result.get("issues", [])))
-        if flake8_result.get("error") is None else 100
+    style = _compute_style_score(tool_results)
+    security = _compute_security_score(tool_results)
+    architecture = _compute_architecture_score(tool_results)
+    type_safety = _compute_type_safety_score(tool_results)
+    coverage = _compute_coverage_score(tool_results)
+    dead_code = _compute_dead_code_score(tool_results)
+    todo = _compute_todo_score(tool_results)
+    overall = max(
+        0,
+        min(
+            100,
+            int(
+                style * 0.20
+                + security * 0.20
+                + architecture * 0.15
+                + type_safety * 0.15
+                + coverage * 0.15
+                + dead_code * 0.10
+                + todo * 0.05
+            ),
+        ),
     )
-    ruff_score = (
-        _tool_style_score(len(ruff_result.get("issues", [])))
-        if ruff_result.get("error") is None else 100
-    )
-    black_score = (
-        _tool_style_score(len(black_result.get("files", [])), per_issue=10)
-        if black_result.get("error") is None else 100
-    )
-    pylint_deductions = {"convention": 1, "refactor": 1, "warning": 2, "error": 5, "fatal": 10}
-    pylint_total = (
-        sum(pylint_deductions.get(i.get("type", ""), 0) for i in pylint_result.get("issues", []))
-        if pylint_result.get("error") is None else 0
-    )
-    pylint_score = max(0, 100 - pylint_total)
-    style = (flake8_score + ruff_score + black_score + pylint_score) // 4
-
-    # --- Security ------------------------------------------------------------
-    security = 100
-    if bandit_result.get("error") is None:
-        severity_deductions = {"LOW": 2, "MEDIUM": 5, "HIGH": 10}
-        for issue in bandit_result.get("issues", []):
-            security -= severity_deductions.get(issue.get("severity", ""), 0)
-    security = max(0, min(100, security))
-
-    # --- Architecture --------------------------------------------------------
-    architecture = 100
-    if radon_result.get("error") is None:
-        grade = radon_result.get("avg_grade", "A")
-        grade_deductions = {"A": 0, "B": 0, "C": 10, "D": 20, "E": 40, "F": 40}
-        architecture -= grade_deductions.get(grade, 0)
-    architecture = max(0, min(100, architecture))
-
-    # --- Type safety ---------------------------------------------------------
-    type_safety = 100
-    if mypy_result.get("error") is None:
-        errors = sum(1 for i in mypy_result.get("issues", []) if i.get("severity") == "error")
-        type_safety = max(0, 100 - errors * 5)
-
-    # --- Test coverage -------------------------------------------------------
-    coverage = 0
-    if coverage_result.get("error") is None:
-        pct = coverage_result.get("coverage_pct")
-        if pct is not None:
-            coverage = int(pct)
-            # Extra penalty for repos with < 60% coverage
-            if coverage < 60:
-                coverage = max(0, coverage - (60 - coverage) // 2)
-    coverage = max(0, min(100, coverage))
-
-    # --- Dead code -----------------------------------------------------------
-    dead_code = 100
-    if vulture_result.get("error") is None:
-        dead_code = max(0, 100 - len(vulture_result.get("items", [])) * 3)
-
-    # --- TODO/FIXME density --------------------------------------------------
-    todo_total = sum(todo_result.get("counts", {}).values())
-    todo_score = max(0, 100 - todo_total * 2)
-
-    # --- Overall (weighted) --------------------------------------------------
-    overall = int(
-        style       * 0.20 +
-        security    * 0.20 +
-        architecture* 0.15 +
-        type_safety * 0.15 +
-        coverage    * 0.15 +
-        dead_code   * 0.10 +
-        todo_score  * 0.05
-    )
-    overall = max(0, min(100, overall))
-
     return {
         "style": style,
         "security": security,
@@ -722,7 +814,7 @@ def calculate_scores(
         "type_safety": type_safety,
         "coverage": coverage,
         "dead_code": dead_code,
-        "todo": todo_score,
+        "todo": todo,
         "overall": overall,
     }
 
@@ -760,9 +852,18 @@ def analyze_repository(repo_url: str) -> "RepositoryAnalysis":
         todo_result = run_todo_fixme(tmpdir)
 
         scores = calculate_scores(
-            flake8_result, bandit_result, radon_result,
-            black_result, mypy_result, ruff_result, pylint_result,
-            coverage_result, vulture_result, todo_result,
+            {
+                "flake8_result": flake8_result,
+                "bandit_result": bandit_result,
+                "radon_result": radon_result,
+                "black_result": black_result,
+                "mypy_result": mypy_result,
+                "ruff_result": ruff_result,
+                "pylint_result": pylint_result,
+                "coverage_result": coverage_result,
+                "vulture_result": vulture_result,
+                "todo_result": todo_result,
+            }
         )
 
         report_details = {
