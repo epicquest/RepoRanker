@@ -29,3 +29,17 @@ def results(request, pk):
     """Render the analysis results page for the given primary key."""
     analysis = get_object_or_404(RepositoryAnalysis, pk=pk)
     return render(request, "analyzer/results.html", {"analysis": analysis})
+
+
+def history(request):
+    """List all previously analyzed repositories."""
+    analyses = RepositoryAnalysis.objects.all()  # pylint: disable=no-member
+    return render(request, "analyzer/history.html", {"analyses": analyses})
+
+
+def delete(request, pk):
+    """Delete an analysis record (POST only) and redirect to history."""
+    if request.method == "POST":
+        analysis = get_object_or_404(RepositoryAnalysis, pk=pk)
+        analysis.delete()
+    return redirect("history")

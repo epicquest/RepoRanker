@@ -1,0 +1,158 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>History – RepoRanker</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      background: #0d1117;
+      color: #c9d1d9;
+      padding: 2rem;
+    }
+    a { color: #58a6ff; text-decoration: none; }
+    a:hover { text-decoration: underline; }
+    .container { max-width: 900px; margin: 0 auto; }
+    header { margin-bottom: 2rem; display: flex; align-items: baseline; justify-content: space-between; flex-wrap: wrap; gap: 1rem; }
+    header h1 { font-size: 1.75rem; color: #f0f6fc; }
+    .nav-link { font-size: 0.9rem; color: #8b949e; }
+    .empty {
+      background: #161b22;
+      border: 1px solid #30363d;
+      border-radius: 12px;
+      padding: 3rem;
+      text-align: center;
+      color: #8b949e;
+    }
+    .empty a { color: #58a6ff; }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      background: #161b22;
+      border: 1px solid #30363d;
+      border-radius: 12px;
+      overflow: hidden;
+    }
+    thead th {
+      text-align: left;
+      padding: 0.75rem 1.25rem;
+      font-size: 0.8rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      color: #8b949e;
+      border-bottom: 1px solid #30363d;
+      background: #0d1117;
+    }
+    tbody td {
+      padding: 0.8rem 1.25rem;
+      border-bottom: 1px solid #21262d;
+      font-size: 0.875rem;
+      vertical-align: middle;
+    }
+    tbody tr:last-child td { border-bottom: none; }
+    tbody tr:hover td { background: #1c2128; }
+    .score-pill {
+      display: inline-block;
+      font-weight: 700;
+      font-size: 0.9rem;
+      min-width: 2.5rem;
+      text-align: center;
+    }
+    .score-high { color: #3fb950; }
+    .score-mid  { color: #d29922; }
+    .score-low  { color: #f85149; }
+    .repo-url { word-break: break-all; }
+    .btn-delete {
+      background: none;
+      border: 1px solid #f8514950;
+      color: #f85149;
+      border-radius: 6px;
+      padding: 0.3rem 0.75rem;
+      font-size: 0.8rem;
+      cursor: pointer;
+      transition: background 0.15s;
+    }
+    .btn-delete:hover { background: #2d1b1b; }
+    .actions { display: flex; gap: 0.5rem; align-items: center; }
+    .btn-view {
+      font-size: 0.8rem;
+      padding: 0.3rem 0.75rem;
+      border: 1px solid #30363d;
+      border-radius: 6px;
+      color: #c9d1d9;
+      text-decoration: none;
+    }
+    .btn-view:hover { background: #21262d; text-decoration: none; }
+  </style>
+</head>
+<body>
+<div class="container">
+  <header>
+    <h1>&#128202; Analyzed Repos</h1>
+    <span class="nav-link"><a href="{% url 'index' %}">&#8592; Analyze new repo</a></span>
+  </header>
+
+  {% if analyses %}
+  <table>
+    <thead>
+      <tr>
+        <th>Repository</th>
+        <th>Overall</th>
+        <th>Style</th>
+        <th>Security</th>
+        <th>Coverage</th>
+        <th>Analyzed</th>
+        <th></th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for a in analyses %}
+      <tr>
+        <td class="repo-url">
+          <a href="{{ a.repo_url }}" target="_blank" rel="noopener noreferrer">{{ a.repo_url }}</a>
+        </td>
+        <td>
+          <span class="score-pill {% if a.overall_score >= 75 %}score-high{% elif a.overall_score >= 40 %}score-mid{% else %}score-low{% endif %}">
+            {{ a.overall_score }}
+          </span>
+        </td>
+        <td>
+          <span class="score-pill {% if a.style_score >= 75 %}score-high{% elif a.style_score >= 40 %}score-mid{% else %}score-low{% endif %}">
+            {{ a.style_score }}
+          </span>
+        </td>
+        <td>
+          <span class="score-pill {% if a.security_score >= 75 %}score-high{% elif a.security_score >= 40 %}score-mid{% else %}score-low{% endif %}">
+            {{ a.security_score }}
+          </span>
+        </td>
+        <td>
+          <span class="score-pill {% if a.coverage_score >= 75 %}score-high{% elif a.coverage_score >= 40 %}score-mid{% else %}score-low{% endif %}">
+            {{ a.coverage_score }}
+          </span>
+        </td>
+        <td style="white-space: nowrap; color: #8b949e;">{{ a.created_at|date:"N j, Y" }}<br><small>{{ a.created_at|date:"g:i A" }}</small></td>
+        <td>
+          <div class="actions">
+            <a class="btn-view" href="{% url 'results' pk=a.pk %}">View</a>
+            <form method="post" action="{% url 'delete' pk=a.pk %}" onsubmit="return confirm('Delete this analysis?');">
+              {% csrf_token %}
+              <button type="submit" class="btn-delete">Delete</button>
+            </form>
+          </div>
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+  <div class="empty">
+    <p>No analyses yet. <a href="{% url 'index' %}">Analyze a repository</a> to get started.</p>
+  </div>
+  {% endif %}
+</div>
+</body>
+</html>
