@@ -1,10 +1,8 @@
 """Django forms for the analyzer app."""
 
-import re
-
 from django import forms
 
-GITHUB_URL_RE = re.compile(r"^https://github\.com/[\w.\-]+/[\w.\-]+(\.git)?/?$")
+from .validators import GITHUB_URL_RE
 
 
 class RepositoryForm(forms.Form):

@@ -17,7 +17,7 @@ from .tools.complexity import _complexity_to_grade
 from .validators import GITHUB_URL_RE
 
 # ---------------------------------------------------------------------------
-# services.py — URL regex
+# validators.py — URL regex
 # ---------------------------------------------------------------------------
 
 
@@ -25,7 +25,7 @@ class TestGithubUrlRegex(TestCase):
     """Tests for the GITHUB_URL_RE regex pattern."""
 
     def test_valid_urls(self):
-        """Test that valid GitHub URLs match the pattern."""
+        """Valid GitHub URLs should match the regex."""
         valid = [
             "https://github.com/user/repo",
             "https://github.com/user/repo.git",
@@ -37,7 +37,7 @@ class TestGithubUrlRegex(TestCase):
             self.assertIsNotNone(GITHUB_URL_RE.match(url), f"Expected match: {url}")
 
     def test_invalid_urls(self):
-        """Test that invalid URLs do not match the pattern."""
+        """Non-GitHub or malformed URLs should not match."""
         invalid = [
             "http://github.com/user/repo",
             "https://gitlab.com/user/repo",
@@ -55,29 +55,29 @@ class TestGithubUrlRegex(TestCase):
 
 
 class TestHasPythonFiles(TestCase):
-    """Tests for the _has_python_files helper function."""
+    """Tests for the _has_python_files helper."""
 
     def test_with_python_file(self):
-        """Test that a directory with a .py file returns True."""
+        """A directory containing a .py file returns True."""
         with tempfile.TemporaryDirectory() as tmpdir:
             with open(os.path.join(tmpdir, "main.py"), "w", encoding="utf-8"):
                 pass
             self.assertTrue(_has_python_files(tmpdir))
 
     def test_without_python_file(self):
-        """Test that a directory without .py files returns False."""
+        """A directory with only non-.py files returns False."""
         with tempfile.TemporaryDirectory() as tmpdir:
             with open(os.path.join(tmpdir, "README.md"), "w", encoding="utf-8"):
                 pass
             self.assertFalse(_has_python_files(tmpdir))
 
     def test_empty_directory(self):
-        """Test that an empty directory returns False."""
+        """An empty directory returns False."""
         with tempfile.TemporaryDirectory() as tmpdir:
             self.assertFalse(_has_python_files(tmpdir))
 
     def test_nested_python_file(self):
-        """Test that a nested .py file is detected."""
+        """A .py file in a subdirectory is detected."""
         with tempfile.TemporaryDirectory() as tmpdir:
             subdir = os.path.join(tmpdir, "src")
             os.makedirs(subdir)
@@ -87,7 +87,7 @@ class TestHasPythonFiles(TestCase):
 
 
 # ---------------------------------------------------------------------------
-# services.py — _complexity_to_grade
+# tools/complexity.py — _complexity_to_grade
 # ---------------------------------------------------------------------------
 
 
@@ -95,43 +95,43 @@ class TestComplexityToGrade(TestCase):
     """Tests for the _complexity_to_grade helper function."""
 
     def test_grade_a(self):
-        """Test grade A thresholds (complexity 1-5)."""
+        """Complexity 1-5 maps to grade A."""
         self.assertEqual(_complexity_to_grade(1), "A")
         self.assertEqual(_complexity_to_grade(5), "A")
 
     def test_grade_b(self):
-        """Test grade B thresholds (complexity 6-10)."""
+        """Complexity 6-10 maps to grade B."""
         self.assertEqual(_complexity_to_grade(6), "B")
         self.assertEqual(_complexity_to_grade(10), "B")
 
     def test_grade_c(self):
-        """Test grade C thresholds (complexity 11-15)."""
+        """Complexity 11-15 maps to grade C."""
         self.assertEqual(_complexity_to_grade(11), "C")
         self.assertEqual(_complexity_to_grade(15), "C")
 
     def test_grade_d(self):
-        """Test grade D thresholds (complexity 16-20)."""
+        """Complexity 16-20 maps to grade D."""
         self.assertEqual(_complexity_to_grade(16), "D")
         self.assertEqual(_complexity_to_grade(20), "D")
 
     def test_grade_e(self):
-        """Test grade E thresholds (complexity 21-25)."""
+        """Complexity 21-25 maps to grade E."""
         self.assertEqual(_complexity_to_grade(21), "E")
         self.assertEqual(_complexity_to_grade(25), "E")
 
     def test_grade_f(self):
-        """Test grade F threshold (complexity > 25)."""
+        """Complexity above 25 maps to grade F."""
         self.assertEqual(_complexity_to_grade(26), "F")
         self.assertEqual(_complexity_to_grade(100), "F")
 
 
 # ---------------------------------------------------------------------------
-# services.py — calculate_scores
+# scoring.py — calculate_scores
 # ---------------------------------------------------------------------------
 
 
 class TestCalculateScores(TestCase):
-    """Tests for the calculate_scores function."""
+    """Tests for the calculate_scores aggregation function."""
 
     def _make_results(self, **overrides):
         """Build a default tool results dict, optionally overriding specific tools."""
@@ -168,7 +168,7 @@ class TestCalculateScores(TestCase):
         return defaults
 
     def test_perfect_scores(self):
-        """Test that clean tool results produce 100 for all scores."""
+        """Clean tool results produce 100 for all scores."""
         scores = calculate_scores(self._make_results())
         self.assertEqual(scores["style"], 100)
         self.assertEqual(scores["security"], 100)
@@ -180,14 +180,14 @@ class TestCalculateScores(TestCase):
         self.assertEqual(scores["overall"], 100)
 
     def test_flake8_issues_reduce_style(self):
-        """Test that flake8 issues lower the style score."""
+        """Flake8 issues lower the style score."""
         results = self._make_results(
             flake8_result={"issues": [{}] * 20, "summary": "", "error": None}
         )
         self.assertLess(calculate_scores(results)["style"], 100)
 
     def test_bandit_high_severity_reduces_security(self):
-        """Test that high-severity bandit findings lower the security score."""
+        """High-severity bandit findings lower the security score."""
         results = self._make_results(
             bandit_result={
                 "issues": [{"severity": "HIGH"}] * 5,
@@ -198,7 +198,7 @@ class TestCalculateScores(TestCase):
         self.assertLess(calculate_scores(results)["security"], 100)
 
     def test_zero_coverage(self):
-        """Test that 0% coverage yields a coverage score of 0."""
+        """Zero percent coverage yields a coverage score of 0."""
         results = self._make_results(
             coverage_result={
                 "coverage_pct": 0,
@@ -210,13 +210,13 @@ class TestCalculateScores(TestCase):
         self.assertEqual(calculate_scores(results)["coverage"], 0)
 
     def test_overall_in_range(self):
-        """Test that the overall score is always between 0 and 100."""
+        """Overall score is always between 0 and 100."""
         scores = calculate_scores(self._make_results())
         self.assertGreaterEqual(scores["overall"], 0)
         self.assertLessEqual(scores["overall"], 100)
 
     def test_tool_error_gives_neutral_style(self):
-        """Test that a tool error results in a neutral (100) style score."""
+        """A tool error does not penalise the style score."""
         results = self._make_results(
             flake8_result={"issues": [], "summary": "", "error": "flake8 not found"}
         )
@@ -229,15 +229,15 @@ class TestCalculateScores(TestCase):
 
 
 class TestCloneRepositoryValidation(TestCase):
-    """Tests for clone_repository URL validation."""
+    """Tests for URL validation in clone_repository."""
 
     def test_invalid_url_raises_value_error(self):
-        """Test that a non-GitHub URL raises ValueError."""
+        """A non-GitHub URL raises ValueError."""
         with self.assertRaises(ValueError):
             clone_repository("https://notgithub.com/user/repo")
 
     def test_non_url_raises_value_error(self):
-        """Test that a completely invalid string raises ValueError."""
+        """A plain string raises ValueError."""
         with self.assertRaises(ValueError):
             clone_repository("not-a-url-at-all")
 
@@ -255,21 +255,21 @@ class TestIndexView(TestCase):
         self.client = Client()
 
     def test_get_renders_form(self):
-        """GET request renders the index template with a form."""
+        """GET request renders the form."""
         response = self.client.get(reverse("index"))
         self.assertEqual(response.status_code, 200)
         self.assertTemplateUsed(response, "analyzer/index.html")
         self.assertIn("form", response.context)
 
     def test_post_invalid_url_shows_error(self):
-        """POST with a non-URL value shows form errors without running analysis."""
+        """POST with an invalid URL re-renders the form with errors."""
         response = self.client.post(reverse("index"), {"repo_url": "not-a-url"})
         self.assertEqual(response.status_code, 200)
         self.assertFalse(response.context["form"].is_valid())
 
     @patch("analyzer.views.analyze_repository")
     def test_post_value_error_shows_form_error(self, mock_analyze):
-        """ValueError from analyze_repository is shown as a form field error."""
+        """POST that triggers ValueError re-renders the form."""
         mock_analyze.side_effect = ValueError("Not a Python repo")
         response = self.client.post(
             reverse("index"),
@@ -302,7 +302,7 @@ class TestResultsView(TestCase):
     """Tests for the results view."""
 
     def setUp(self):
-        """Set up the test client and a sample analysis record."""
+        """Create a sample analysis record."""
         self.client = Client()
         self.analysis = RepositoryAnalysis.objects.create(  # pylint: disable=no-member
             repo_url="https://github.com/user/repo",
@@ -311,13 +311,13 @@ class TestResultsView(TestCase):
         )
 
     def test_results_renders_analysis(self):
-        """Results page renders the correct template with the analysis object."""
+        """GET renders the results template with the correct analysis."""
         response = self.client.get(reverse("results", kwargs={"pk": self.analysis.pk}))
         self.assertEqual(response.status_code, 200)
         self.assertTemplateUsed(response, "analyzer/results.html")
         self.assertEqual(response.context["analysis"], self.analysis)
 
     def test_results_404_for_missing_pk(self):
-        """Non-existent analysis PK returns a 404 response."""
+        """GET with a non-existent PK returns 404."""
         response = self.client.get(reverse("results", kwargs={"pk": 9999}))
         self.assertEqual(response.status_code, 404)

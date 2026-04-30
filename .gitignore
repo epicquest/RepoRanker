@@ -5,3 +5,4 @@
 /server.pid
 /db.sqlite3
 /.env
+/analyzer/tools/__pycache__/
