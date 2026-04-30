@@ -33,6 +33,7 @@ run_tool "black"    black --check "${SRC_DIRS[@]}"
 run_tool "ruff"     ruff check "${SRC_DIRS[@]}"
 run_tool "pylint"   pylint "${SRC_DIRS[@]}" --load-plugins=pylint_django --ignore=migrations --exit-zero
 run_tool "mypy"     mypy "${SRC_DIRS[@]}" --ignore-missing-imports --no-error-summary
+run_tool "vulture"  vulture "${SRC_DIRS[@]}" whitelist_django.py --min-confidence 60
 run_tool "pytest"   python -m pytest --cov=. --cov-report=term-missing --no-header -q
 
 echo ""

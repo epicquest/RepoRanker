@@ -308,7 +308,7 @@ def run_black(path: str) -> dict:
     files = []
     for line in result.stderr.splitlines():
         if line.startswith("would reformat "):
-            filepath = line[len("would reformat "):].strip()
+            filepath = line[len("would reformat ") :].strip()
             files.append(filepath.replace(path, "").lstrip("/\\"))
 
     summary = (
