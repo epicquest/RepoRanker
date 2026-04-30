@@ -304,7 +304,7 @@ class TestResultsView(TestCase):
     def setUp(self):
         """Set up the test client and a sample analysis record."""
         self.client = Client()
-        self.analysis = RepositoryAnalysis.objects.create(
+        self.analysis = RepositoryAnalysis.objects.create(  # pylint: disable=no-member
             repo_url="https://github.com/user/repo",
             overall_score=75,
             report_details={},

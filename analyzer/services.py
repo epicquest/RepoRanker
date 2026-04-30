@@ -424,6 +424,8 @@ def run_pylint(path: str) -> dict:
                 "pylint",
                 path,
                 "--recursive=y",
+                "--load-plugins=pylint_django",
+                "--ignore=migrations",
                 "--output-format=json",
                 "--exit-zero",
             ],
@@ -924,7 +926,7 @@ def analyze_repository(repo_url: str) -> "RepositoryAnalysis":
             },
         }
 
-        analysis = RepositoryAnalysis.objects.create(
+        analysis = RepositoryAnalysis.objects.create(  # pylint: disable=no-member
             repo_url=repo_url,
             style_score=scores["style"],
             security_score=scores["security"],
