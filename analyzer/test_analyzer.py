@@ -340,7 +340,9 @@ class TestTemporaryRepoDirectoryCleanup(TestCase):
         """Test that temp directory is cleaned up after successful context exit."""
         tmpdir = None
         with patch("analyzer.services.clone_repository") as mock_clone:
-            real_tmpdir = tempfile.mkdtemp(prefix="reporanker_test_")
+            real_tmpdir = tempfile.mkdtemp(
+                prefix="reporanker_test_"
+            )  # nosec - Secure mode 0700
             mock_clone.return_value = real_tmpdir
             tmpdir = real_tmpdir
 
@@ -355,7 +357,9 @@ class TestTemporaryRepoDirectoryCleanup(TestCase):
         """Test that temp directory is cleaned up even if exception occurs in context."""
         tmpdir = None
         with patch("analyzer.services.clone_repository") as mock_clone:
-            real_tmpdir = tempfile.mkdtemp(prefix="reporanker_test_")
+            real_tmpdir = tempfile.mkdtemp(
+                prefix="reporanker_test_"
+            )  # nosec - Secure mode 0700
             mock_clone.return_value = real_tmpdir
             tmpdir = real_tmpdir
 

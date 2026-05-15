@@ -10,7 +10,7 @@ import contextlib
 import logging
 import os
 import shutil
-import subprocess
+import subprocess  # nosec - Used safely with shell=False and hardcoded commands
 import tempfile
 import time
 

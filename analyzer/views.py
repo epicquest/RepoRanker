@@ -1,9 +1,11 @@
 """Views for the analyzer app."""
 
+from django.http import HttpResponse
 from django.shortcuts import get_object_or_404, redirect, render
 
 from .forms import RepositoryForm
 from .models import RepositoryAnalysis
+from .pdf_export import generate_pdf
 from .services import analyze_repository
 
 
@@ -43,3 +45,15 @@ def delete(request, pk):
         analysis = get_object_or_404(RepositoryAnalysis, pk=pk)
         analysis.delete()
     return redirect("history")
+
+
+def export_pdf(request, pk):
+    """Export analysis results as PDF."""
+    analysis = get_object_or_404(RepositoryAnalysis, pk=pk)
+    pdf_content = generate_pdf(analysis)
+
+    response = HttpResponse(pdf_content, content_type="application/pdf")
+    response["Content-Disposition"] = (
+        f"attachment; filename=analysis_{analysis.pk}_{analysis.created_at.strftime('%Y%m%d_%H%M%S')}.pdf"
+    )
+    return response
