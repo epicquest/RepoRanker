@@ -1,5 +1,6 @@
 """Type-safety tool runner: mypy."""
 
+import asyncio
 import re
 import subprocess  # nosec B404
 
@@ -55,3 +56,11 @@ def run_mypy(path: str) -> dict:
     warnings = sum(1 for i in issues if i["severity"] == "warning")
     summary = f"{errors} type error(s), {warnings} warning(s) found by mypy."
     return {"issues": issues, "summary": summary, "error": None}
+
+
+async def async_run_mypy(path: str) -> dict:
+    """Async wrapper for run_mypy. Runs mypy in a thread.
+
+    Returns the same dict structure as run_mypy().
+    """
+    return await asyncio.to_thread(run_mypy, path)

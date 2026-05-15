@@ -1,5 +1,6 @@
 """Style tool runners: flake8, ruff, black, pylint."""
 
+import asyncio
 import json
 import re
 import subprocess  # nosec B404
@@ -208,6 +209,38 @@ def run_pylint(path: str) -> dict:
         f"{counts['refactor']} refactor(s), {counts['convention']} convention(s)."
     )
     return {"issues": issues, "summary": summary, "error": None}
+
+
+async def async_run_flake8(path: str) -> dict:
+    """Async wrapper for run_flake8. Runs flake8 in a thread.
+
+    Returns the same dict structure as run_flake8().
+    """
+    return await asyncio.to_thread(run_flake8, path)
+
+
+async def async_run_ruff(path: str) -> dict:
+    """Async wrapper for run_ruff. Runs ruff in a thread.
+
+    Returns the same dict structure as run_ruff().
+    """
+    return await asyncio.to_thread(run_ruff, path)
+
+
+async def async_run_black(path: str) -> dict:
+    """Async wrapper for run_black. Runs black in a thread.
+
+    Returns the same dict structure as run_black().
+    """
+    return await asyncio.to_thread(run_black, path)
+
+
+async def async_run_pylint(path: str) -> dict:
+    """Async wrapper for run_pylint. Runs pylint in a thread.
+
+    Returns the same dict structure as run_pylint().
+    """
+    return await asyncio.to_thread(run_pylint, path)
 
 
 _MYPY_LINE_RE = re.compile(r"^(.+?):(\d+):\s+(error|warning|note):\s+(.*)$")

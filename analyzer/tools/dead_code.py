@@ -1,5 +1,6 @@
 """Dead code tool runner: vulture."""
 
+import asyncio
 import re
 import subprocess  # nosec B404
 
@@ -50,3 +51,11 @@ def run_vulture(path: str) -> dict:
 
     summary = f"{len(items)} unused code item(s) found by vulture."
     return {"items": items, "summary": summary, "error": None}
+
+
+async def async_run_vulture(path: str) -> dict:
+    """Async wrapper for run_vulture. Runs vulture in a thread.
+
+    Returns the same dict structure as run_vulture().
+    """
+    return await asyncio.to_thread(run_vulture, path)

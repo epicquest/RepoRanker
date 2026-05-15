@@ -1,5 +1,6 @@
 """Security tool runner: bandit."""
 
+import asyncio
 import json
 import subprocess  # nosec B404
 
@@ -63,3 +64,11 @@ def run_bandit(path: str) -> dict:
         f"{counts['HIGH']} high, {counts['MEDIUM']} medium, {counts['LOW']} low."
     )
     return {"issues": issues, "summary": summary, "error": None}
+
+
+async def async_run_bandit(path: str) -> dict:
+    """Async wrapper for run_bandit. Runs bandit in a thread.
+
+    Returns the same dict structure as run_bandit().
+    """
+    return await asyncio.to_thread(run_bandit, path)

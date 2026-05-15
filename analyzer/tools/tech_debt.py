@@ -1,5 +1,6 @@
 """Tech debt scanner: TODO/FIXME/HACK/XXX comments."""
 
+import asyncio
 import os
 import re
 
@@ -71,3 +72,11 @@ def run_todo_fixme(path: str) -> dict:
             "summary": "todo scan failed",
             "error": str(exc),
         }
+
+
+async def async_run_todo_fixme(path: str) -> dict:
+    """Async wrapper for run_todo_fixme. Scans files in a thread.
+
+    Returns the same dict structure as run_todo_fixme().
+    """
+    return await asyncio.to_thread(run_todo_fixme, path)

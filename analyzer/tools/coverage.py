@@ -1,5 +1,6 @@
 """Coverage tool runner: pytest-cov."""
 
+import asyncio
 import re
 import subprocess  # nosec B404
 import sys
@@ -78,3 +79,11 @@ def run_pytest_coverage(path: str) -> dict:
         "summary": summary,
         "error": None,
     }
+
+
+async def async_run_pytest_coverage(path: str) -> dict:
+    """Async wrapper for run_pytest_coverage. Runs pytest in a thread.
+
+    Returns the same dict structure as run_pytest_coverage().
+    """
+    return await asyncio.to_thread(run_pytest_coverage, path)

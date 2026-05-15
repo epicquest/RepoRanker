@@ -1,5 +1,6 @@
 """Complexity tool runner: radon (cyclomatic complexity + maintainability index)."""
 
+import asyncio
 import json
 import subprocess  # nosec B404
 
@@ -116,3 +117,12 @@ def run_radon(path: str) -> dict:
         "summary": summary,
         "error": None,
     }
+
+
+async def async_run_radon(path: str) -> dict:
+    """
+    Async wrapper for run_radon. Runs radon in a thread to avoid blocking.
+
+    Returns the same dict structure as run_radon().
+    """
+    return await asyncio.to_thread(run_radon, path)
